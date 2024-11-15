@@ -9,6 +9,7 @@ import (
 	"GalaxyEmpireWeb/routes"
 	"GalaxyEmpireWeb/services/accountservice"
 	"GalaxyEmpireWeb/services/captchaservice"
+	"GalaxyEmpireWeb/services/casbinservice"
 	"GalaxyEmpireWeb/services/taskservice"
 	"GalaxyEmpireWeb/services/userservice"
 	"os"
@@ -24,15 +25,17 @@ func servicesInit(
 	db *gorm.DB,
 	mq *queue.RabbitMQConnection,
 	rdb *r.Client) {
-	userservice.InitService(db, rdb)
+	userservice.InitService(db, rdb, enforcer)
 	accountservice.InitService(db, rdb)
 	taskservice.InitService(db, mq)
 	captchaservice.InitCaptchaService(rdb)
+	casbinservice.InitCasbinService(db, "config/model.conf")
 }
 
 var db *gorm.DB
 var mq *queue.RabbitMQConnection
 var rdb *r.Client
+var enforcer casbinservice.Enforcer //WARN: Remember to initialize this variable before using it.
 
 func main() {
 	rdb = redis.GetRedisDB()

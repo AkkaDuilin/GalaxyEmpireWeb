@@ -17,6 +17,7 @@ type Task interface {
 
 type BaseTask struct {
 	gorm.Model
+	BaseCasbinEntity
 	Name      string    `json:"name"`
 	Logs      []taskLog `gorm:"polymorphic:Refer"`
 	NextStart time.Time `json:"next_start"`

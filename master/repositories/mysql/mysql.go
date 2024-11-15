@@ -15,7 +15,7 @@ var globalDB *gorm.DB
 var err error
 
 func ConnectDatabase() {
-	dsn := config.GetDSN("config/yamls/mysql.yaml")
+	dsn := config.GetDSN("config/yaml/mysql.yaml")
 	globalDB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
 		panic("failed to connect database")

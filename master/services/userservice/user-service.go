@@ -4,6 +4,7 @@ import (
 	"GalaxyEmpireWeb/consts"
 	"GalaxyEmpireWeb/logger"
 	"GalaxyEmpireWeb/models"
+	"GalaxyEmpireWeb/services/casbinservice"
 	"GalaxyEmpireWeb/utils"
 	"context"
 	"errors"
@@ -18,8 +19,9 @@ import (
 )
 
 type userService struct { // change to private for factory
-	DB  *gorm.DB
-	RDB *r.Client
+	DB       *gorm.DB
+	RDB      *r.Client
+	Enforcer casbinservice.Enforcer
 }
 
 var userServiceInstance *userService
@@ -27,21 +29,25 @@ var log = logger.GetLogger()
 var rolePrefix = consts.UserRolePrefix
 var expireTime = consts.ProdExpire
 
-func NewService(db *gorm.DB, rdb *r.Client) *userService {
+const READ = 1
+const WRITE = 2
+
+func NewService(db *gorm.DB, rdb *r.Client, enforcer casbinservice.Enforcer) *userService {
 	return &userService{
-		DB:  db,
-		RDB: rdb,
+		DB:       db,
+		RDB:      rdb,
+		Enforcer: enforcer,
 	}
 }
 
-func InitService(db *gorm.DB, rdb *r.Client) error {
+func InitService(db *gorm.DB, rdb *r.Client, enforcer casbinservice.Enforcer) error {
 	if userServiceInstance != nil {
 		return errors.New("UserService is already initialized")
 	}
 	if os.Getenv("ENV") == "test" {
 		expireTime = consts.TestExipre
 	}
-	userServiceInstance = NewService(db, rdb)
+	userServiceInstance = NewService(db, rdb, enforcer)
 	return nil
 }
 
@@ -70,6 +76,11 @@ func (service *userService) Create(ctx context.Context, user *models.User) *util
 		)
 		return utils.NewServiceError(http.StatusInternalServerError, "failed create user", err)
 	}
+	casbinservice := casbinservice.GetCasbinService()
+	obj := fmt.Sprintf("%s%d", user.GetEntityPrefix(), user.ID)
+	service.Enforcer.AddPolicy(ctx, strconv.Itoa(int(user.ID)), obj, "read")
+	casbinservice.AddPolicy(ctx, strconv.Itoa(int(user.ID)), obj, "write")
+	casbinservice.AddUserToGroup(ctx, strconv.Itoa(int(user.ID)), "user")
 	return nil
 }
 func (service *userService) Update(ctx context.Context, user *models.User) *utils.ServiceError {
@@ -78,7 +89,8 @@ func (service *userService) Update(ctx context.Context, user *models.User) *util
 		zap.String("traceID", traceID),
 		zap.String("username", user.Username),
 	)
-	allowed, _ := service.IsUserAllowed(ctx, user.ID)
+	obj := fmt.Sprintf("%s%d", user.GetEntityPrefix(), user.ID)
+	allowed, _ := service.IsUserAllowed(ctx, obj, READ|WRITE)
 	if !allowed {
 		log.Info("[service]Get Update By ID - Not allowed",
 			zap.String("traceID", traceID),
@@ -123,6 +135,13 @@ func (service *userService) GetAllUsers(ctx context.Context) ([]*models.User, *u
 		zap.String("traceID", traceID),
 	)
 	var users []*models.User
+	allowed, _ := service.IsUserAllowed(ctx, "all", READ)
+	if !allowed {
+		log.Info("[service]Get All Users - Not allowed",
+			zap.String("traceID", traceID),
+		)
+		return nil, utils.NewServiceError(http.StatusUnauthorized, "User Not allowed", nil)
+	}
 	err := service.DB.Find(&users).Error
 	if err != nil {
 		log.Error("[service]Get all users failed",
@@ -148,6 +167,16 @@ func (service *userService) GetById(ctx context.Context, id uint, fields []strin
 	for _, field := range fields {
 		cur.Preload(field)
 	}
+	obj := fmt.Sprintf("%s%d", user.GetEntityPrefix(), user.ID)
+	allowed, _ := service.IsUserAllowed(ctx, obj, READ)
+	if !allowed {
+		log.Info("[service]Get By ID - Not allowed",
+			zap.String("traceID", traceID),
+			zap.Uint("userID", id),
+		)
+		return nil, utils.NewServiceError(http.StatusUnauthorized, "User Not allowed", nil)
+	}
+
 	err := cur.Where("id = ?", id).First(&user).Error
 	if err != nil {
 		log.Error("[service]Get user by id failed",
@@ -247,24 +276,36 @@ func (service *userService) GetUserRole(ctx context.Context, userID uint) int {
 
 // Prepared for more complicated cases
 // Seem Useless currently lol
-func (service *userService) IsUserAllowed(ctx context.Context, userID uint) (allowed bool, err error) {
+func (service *userService) IsUserAllowed(ctx context.Context, obj string, rw int) (allowed bool, err error) {
 	traceID := utils.TraceIDFromContext(ctx)
-	role := ctx.Value("role").(int)
+	role := ctx.Value("role")
+	if role == nil {
+		return false, errors.New("role not found in context")
+	}
+	roleInt := role.(int)
 	ctxUserID := ctx.Value("userID").(uint)
 	log.Info(
 		"[service]Check user Permission",
 		zap.String("traceID", traceID),
-		zap.Uint("userID", userID),
-		zap.Int("role", role),
+		zap.Int("role", roleInt),
+		zap.String("obj", obj),
 		zap.Uint("requestUserID", ctxUserID),
 	)
-	if role == 1 {
-		return true, nil
+	opt := "read"
+	if rw&2 == 2 {
+		opt = "write"
 	}
-	if userID == ctxUserID {
-		return true, nil
+	allowed, err = service.Enforcer.Enforce(ctx, strconv.Itoa(int(ctxUserID)), obj, opt)
+	if err != nil {
+		log.Error("[service]IsUserAllowedfailed to validate user permission",
+			zap.String("traceID", traceID),
+			zap.Int("role", roleInt),
+			zap.Uint("requestUserID", ctxUserID),
+			zap.Error(err),
+		)
+		return false, utils.NewServiceError(http.StatusInternalServerError, "Failed to Validate User Permission", err)
 	}
-	return false, nil
+	return allowed, nil
 }
 
 func (service *userService) LoginUser(ctx context.Context, user *models.User) *utils.ServiceError {

@@ -4,103 +4,20 @@ import (
 	"GalaxyEmpireWeb/models"
 	"GalaxyEmpireWeb/repositories/redis"
 	"GalaxyEmpireWeb/repositories/sqlite"
+	"GalaxyEmpireWeb/services/casbinservice"
 	"GalaxyEmpireWeb/utils"
 	"context"
+	"fmt"
 	"testing"
 
 	"gorm.io/gorm"
 )
 
-func TestUserService_GetById(t *testing.T) {
-	ctx := utils.NewContextWithTraceID()
-	type fields struct {
-		DB *gorm.DB
-	}
-	type args struct {
-		id     uint
-		fields []string
-	}
-
-	// 初始化数据库并进行迁移
-	db := sqlite.GetTestDB()
-	db.AutoMigrate(&models.User{})
-
-	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		setup   func(*gorm.DB) *models.User // 设置函数来插入测试数据
-		wantErr bool
-	}{
-		{
-			name: "Test Get User By Id",
-			fields: fields{
-				DB: db,
-			},
-			setup: func(db *gorm.DB) *models.User {
-				// 在事务中插入测试用户
-				testUser := &models.User{
-					Username: "Test User",
-					Password: "testpassword",
-					Balance:  100,
-				}
-				db.Create(testUser)
-				return testUser
-			},
-			wantErr: false,
-		},
-		{
-			name: "Test Get User By Nonexistent Id",
-			fields: fields{
-				DB: db,
-			},
-			setup: func(db *gorm.DB) *models.User {
-				return nil
-			},
-			wantErr: true,
-		},
-	}
-	rdb := redis.GetRedisDB()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// 启动事务
-			tx := tt.fields.DB.Begin()
-			defer func() {
-				// 测试结束时回滚事务
-				tx.Rollback()
-			}()
-
-			InitService(tx, rdb)
-			service, err := GetService(ctx)
-			if err != nil {
-				t.Errorf("UserService.GetById() error = %v", err)
-				return
-			}
-			// 设置测试数据
-			testUser := tt.setup(tx)
-
-			var id uint
-			if testUser != nil {
-				id = testUser.ID
-			}
-
-			got, err1 := service.GetById(ctx, id, tt.args.fields)
-			if (err1 != nil) != tt.wantErr {
-				t.Errorf("UserService.GetById() error = %v, wantErr %v", err1, tt.wantErr)
-				return
-			}
-			if !tt.wantErr && (got.Username != testUser.Username || got.Password != testUser.Password || got.Balance != testUser.Balance) {
-				t.Errorf("UserService.GetById() = %v, want %v", got, testUser)
-			}
-		})
-	}
-
-}
-
 func TestUserService_Create(t *testing.T) {
 	ctx := utils.NewContextWithTraceID()
 	ctx = context.WithValue(ctx, "userID", uint(1))
 	ctx = context.WithValue(ctx, "role", uint(1))
+	casbinservice.InitCasbinService(sqlite.GetTestDB(), "../../config/model.conf")
 	type fields struct {
 		DB *gorm.DB
 	}
@@ -190,6 +107,99 @@ func TestUserService_Create(t *testing.T) {
 		})
 	}
 }
+func TestUserService_GetById(t *testing.T) {
+	ctx := utils.NewContextWithTraceID()
+	ctx = context.WithValue(ctx, "userID", uint(1)) // TODO: add to case
+	ctx = context.WithValue(ctx, "role", 1)
+	fmt.Println("!!!!!!!!!!!!!", ctx, ctx.Value("role").(int))
+	casbinservice.InitCasbinService(sqlite.GetTestDB(), "../../config/model.conf")
+	type fields struct {
+		DB *gorm.DB
+	}
+	type args struct {
+		id     uint
+		fields []string
+	}
+
+	// 初始化数据库并进行迁移
+	db := sqlite.GetTestDB()
+	db.AutoMigrate(&models.User{})
+
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		setup   func(*gorm.DB) *models.User // 设置函数来插入测试数据
+		wantErr bool
+	}{
+		{
+			name: "Test Get User By Id",
+			fields: fields{
+				DB: db,
+			},
+			setup: func(db *gorm.DB) *models.User {
+				// 在事务中插入测试用户
+				casbinservice.InitCasbinService(db, "../../config/model.conf")
+				service := &userService{
+					DB: db,
+				}
+				testUser := &models.User{
+					Username: "Test User",
+					Password: "testpassword",
+					Balance:  100,
+				}
+				service.Create(ctx, testUser)
+				return testUser
+			},
+			wantErr: false,
+		},
+		{
+			name: "Test Get User By Nonexistent Id",
+			fields: fields{
+				DB: db,
+			},
+			setup: func(db *gorm.DB) *models.User {
+				return nil
+			},
+			wantErr: true,
+		},
+	}
+	rdb := redis.GetRedisDB()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// 启动事务
+			tx := tt.fields.DB.Begin()
+			defer func() {
+				// 测试结束时回滚事务
+				tx.Rollback()
+			}()
+
+			InitService(tx, rdb)
+			service, err := GetService(ctx)
+			if err != nil {
+				t.Errorf("UserService.GetById() error = %v", err)
+				return
+			}
+			// 设置测试数据
+			testUser := tt.setup(tx)
+
+			var id uint
+			if testUser != nil {
+				id = testUser.ID
+			}
+
+			got, err1 := service.GetById(ctx, id, tt.args.fields)
+			if (err1 != nil) != tt.wantErr {
+				t.Errorf("UserService.GetById() error = %v, wantErr %v", err1, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && (got.Username != testUser.Username || got.Password != testUser.Password || got.Balance != testUser.Balance) {
+				t.Errorf("UserService.GetById() = %v, want %v", got, testUser)
+			}
+		})
+	}
+
+}
 
 func TestUserService_Update(t *testing.T) {
 	ctx := utils.NewContextWithTraceID()
@@ -197,6 +207,7 @@ func TestUserService_Update(t *testing.T) {
 	ctx = context.WithValue(ctx, "role", 1)
 	db := sqlite.GetTestDB()
 	db.AutoMigrate(&models.User{}) // Create User table
+	casbinservice.InitCasbinService(db, "../../config/model.conf")
 
 	// Insert a test user into the database
 	testUser := &models.User{

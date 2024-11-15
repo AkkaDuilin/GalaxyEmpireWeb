@@ -223,6 +223,9 @@ func (service *accountService) Delete(ctx context.Context, ID uint) *utils.Servi
 
 }
 
+// ________________________________
+// |  Private Functions         |
+
 func (service *accountService) isUserAllowed(ctx context.Context, accountID uint) (bool, *utils.ServiceError) {
 	traceID := utils.TraceIDFromContext(ctx)
 	userID1 := ctx.Value("userID")
