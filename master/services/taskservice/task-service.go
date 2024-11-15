@@ -5,6 +5,7 @@ import (
 	"GalaxyEmpireWeb/models"
 	"GalaxyEmpireWeb/queue"
 	"GalaxyEmpireWeb/utils"
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -159,4 +160,12 @@ func (s *taskService) processTaskResponse(taskResponse *models.TaskResponse) {
 }
 func (s *taskService) taskRetry(taskID int) {
 
+}
+
+func (s *taskService) CreateTask(ctx context.Context, task models.Task) (*models.Task, error) {
+	err := s.DB.Create(&task).Error
+	if err != nil {
+		return nil, err
+	}
+	return &task, nil
 }

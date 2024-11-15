@@ -43,7 +43,7 @@ func RegisterRoutes(serviceMap map[string]interface{}) *gin.Engine {
 	}
 	balance := u.Group("/balance")
 	{
-		balance.PUT("", user.UpdateBalance)
+		balance.PUT("", user.UpdateBalance) // TODO: use other interface not http
 	}
 
 	a := v1.Group("/account")

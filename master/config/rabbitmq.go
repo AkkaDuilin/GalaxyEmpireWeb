@@ -1,5 +1,7 @@
 package config
 
+// TODO:move me latter
+
 import (
 	"log"
 	"os"
@@ -23,7 +25,7 @@ func GetRabbitMQConfig() *RabbitMQConfig {
 	if os.Getenv("env") == "test" {
 		return config
 	}
-	yamlFile, err := os.ReadFile("config/yamls/rabbitmq.yaml")
+	yamlFile, err := os.ReadFile("config/yaml/rabbitmq.yaml")
 	if err != nil {
 		log.Fatalf("yamlFile.Get err #%v ", err)
 	}
