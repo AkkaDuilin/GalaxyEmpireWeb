@@ -13,7 +13,7 @@ type RouteTask struct {
 	To          Star `gorm:"embedded;embeddedPrefix:to_"`
 	AccountID   uint
 	Fleets      []Fleet     `gorm:"many2many:route_task_fleet;"`
-	AccountInfo AccountInfo `gorm:"-"`
+	AccountInfo AccountInfo `gorm:"-"` // WARN: check gorm tag
 }
 
 func (routeTask *RouteTask) QueueName() string {
