@@ -71,7 +71,7 @@ func (service *accountService) GetById(ctx context.Context, id uint, fields []st
 			zap.String("traceID", traceID),
 		)
 		return nil, utils.NewServiceError(
-			http.StatusUnauthorized,
+			http.StatusForbidden,
 			"Account Not allowed",
 			nil,
 		)
@@ -131,9 +131,16 @@ func (service *accountService) Create(ctx context.Context, account *models.Accou
 		zap.String("username", account.Username),
 		zap.String("traceID", traceID),
 	)
+	fmt.Println(account)
 	account.UserID = userID
 	err := service.DB.Create(account).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			log.Info("[service]Create Account failed - Account already exists",
+				zap.String("traceID", traceID),
+			)
+			return utils.NewServiceError(http.StatusConflict, "Account already exists", err)
+		}
 		log.Error("[service]Create Account failed",
 			zap.String("traceID", traceID),
 			zap.Uint("userId", userID),
@@ -222,7 +229,7 @@ func (service *accountService) Delete(ctx context.Context, ID uint) *utils.Servi
 // ________________________________
 // |  Private Functions         |
 
-func (service *accountService) isUserAllowed(ctx context.Context, accountID uint) (bool, *utils.ServiceError) {
+func (service *accountService) isUserAllowed(ctx context.Context, accountID uint) (bool, *utils.ServiceError) { // TODO: rewrite with casbin
 	traceID := utils.TraceIDFromContext(ctx)
 	userID1 := ctx.Value("userID")
 	if userID1 == nil {
@@ -285,13 +292,7 @@ func (service *accountService) isUserAllowed(ctx context.Context, accountID uint
 			)
 			return false, utils.NewServiceError(http.StatusInternalServerError, "redis retrieve error", err)
 		}
-		err = errors.New("redis retrieve error not this id")
-		log.Error("[service]Check User Permission - failed（2）",
-			zap.String("traceID", traceID),
-			zap.String("redis_key", key),
-			zap.Error(err),
-		)
-		return false, utils.NewServiceError(http.StatusInternalServerError, "redis retrieve error", err)
+		return false, nil
 	}
 	log.Info("[service]Check User Permission - Success",
 		zap.String("traceID", traceID),
