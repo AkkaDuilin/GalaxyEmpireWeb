@@ -1,0 +1,17 @@
+/* [next]/internal/font/google/inter_c4e516d6.module.css [app-client] (css) */
+@font-face {
+  font-family: __Inter_Fallback_c4e516;
+  src: local(Arial);
+  ascent-override: 90.49%;
+  descent-override: 22.56%;
+  line-gap-override: 0.0%;
+  size-adjust: 107.06%;
+}
+
+.inter_c4e516d6-module__qcbB1a__className {
+  font-family: __Inter_c4e516, __Inter_Fallback_c4e516;
+  font-style: normal;
+}
+
+
+/*# sourceMappingURL=%5Bnext%5D_internal_font_google_inter_c4e516d6_module_15c823.css.map*/

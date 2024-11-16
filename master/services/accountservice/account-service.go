@@ -106,24 +106,20 @@ func (service *accountService) GetByUserId(ctx context.Context,
 	var accounts []models.Account
 	result := service.DB.Model(&models.Account{}).Where("user_id = ?", userId).Find(&accounts)
 	err := result.Error
+	if result.RowsAffected == 0 {
+		return &accounts, utils.NewServiceError(http.StatusNotFound, "Account Not found", err)
+	}
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			log.Error("[service]Get Account By User ID failed - Not found",
-				zap.String("traceID", traceID),
-				zap.Error(err),
-			)
-			return nil, utils.NewServiceError(http.StatusNotFound, "Account Not found", err)
-
-		}
 		log.Error("[service]Get Account By User ID failed",
 			zap.String("traceID", traceID),
 			zap.Error(err),
 		)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, utils.NewServiceError(http.StatusNotFound, "Account Not found", err)
+
+		}
 		return nil, utils.NewServiceError(http.StatusInternalServerError, "SQL Service Error", err)
 	}
-	log.Info("[service]Successfully get accounts",
-		zap.String("traceID", traceID),
-		zap.Int("accounts count", len(accounts)))
 	return &accounts, nil
 }
 
@@ -135,9 +131,16 @@ func (service *accountService) Create(ctx context.Context, account *models.Accou
 		zap.String("username", account.Username),
 		zap.String("traceID", traceID),
 	)
+	fmt.Println(account)
 	account.UserID = userID
 	err := service.DB.Create(account).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			log.Info("[service]Create Account failed - Account already exists",
+				zap.String("traceID", traceID),
+			)
+			return utils.NewServiceError(http.StatusConflict, "Account already exists", err)
+		}
 		log.Error("[service]Create Account failed",
 			zap.String("traceID", traceID),
 			zap.Uint("userId", userID),
@@ -226,7 +229,7 @@ func (service *accountService) Delete(ctx context.Context, ID uint) *utils.Servi
 // ________________________________
 // |  Private Functions         |
 
-func (service *accountService) isUserAllowed(ctx context.Context, accountID uint) (bool, *utils.ServiceError) {
+func (service *accountService) isUserAllowed(ctx context.Context, accountID uint) (bool, *utils.ServiceError) { // TODO: rewrite with casbin
 	traceID := utils.TraceIDFromContext(ctx)
 	userID1 := ctx.Value("userID")
 	if userID1 == nil {
@@ -280,22 +283,22 @@ func (service *accountService) isUserAllowed(ctx context.Context, accountID uint
 
 	// 如果键存在，检查集合中是否包含特定元素
 	isMember, err := service.RDB.SIsMember(ctx, key, accountID).Result()
-	// 首先检查错误
-	if err != nil {
-		log.Error("[service]Check User Permission - failed",
-			zap.String("traceID", traceID),
-			zap.String("redis_key", key),
-			zap.Error(err),
-		)
-		return false, utils.NewServiceError(http.StatusInternalServerError, "redis retrieve error", err)
+	if !isMember {
+		if err != nil {
+			log.Error("[service]Check User Permission - failed（1）",
+				zap.String("traceID", traceID),
+				zap.String("redis_key", key),
+				zap.Error(err),
+			)
+			return false, utils.NewServiceError(http.StatusInternalServerError, "redis retrieve error", err)
+		}
+		return false, nil
 	}
-
 	log.Info("[service]Check User Permission - Success",
 		zap.String("traceID", traceID),
 		zap.Bool("isMember", isMember),
 	)
 	return isMember, nil
-
 }
 
 func (service *accountService) cacheUserAccounts(ctx context.Context, userID uint, accountIDs []uint) *utils.ServiceError {

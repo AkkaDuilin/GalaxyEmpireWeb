@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 5, "column": 0}, "map": {"version":3,"sources":["/turbopack/[project]/middleware.ts"],"sourcesContent":["// Protecting routes with next-auth\r\n// https://next-auth.js.org/configuration/nextjs#middleware\r\n// https://nextjs.org/docs/app/building-your-application/routing/middleware\r\n\r\nimport NextAuth from 'next-auth';\r\nimport authConfig from './auth.config';\r\n\r\nconst { auth } = NextAuth(authConfig);\r\n\r\nexport default auth((req) => {\r\n  if (!req.auth) {\r\n    const url = req.url.replace(req.nextUrl.pathname, '/');\r\n    return Response.redirect(url);\r\n  }\r\n});\r\n\r\nexport const config = { matcher: ['/dashboard/:path*'] };\r\n"],"names":[],"mappings":"AAAA,mCAAmC;AACnC,2DAA2D;AAC3D,2EAA2E;;;;;;;;;;;;;;;AAK3E,MAAM,EAAE,IAAI,EAAE,GAAG,CAAA,GAAA,qJAAA,CAAA,UAAQ,AAAD,EAAE;uCAEX,KAAK,CAAC;IACnB,IAAI,CAAC,IAAI,IAAI,EAAE;QACb,MAAM,MAAM,IAAI,GAAG,CAAC,OAAO,CAAC,IAAI,OAAO,CAAC,QAAQ,EAAE;QAClD,OAAO,SAAS,QAAQ,CAAC;IAC3B;AACF;AAEO,MAAM,SAAS;IAAE,SAAS;QAAC;KAAoB;AAAC"}},
+    {"offset": {"line": 34, "column": 0}, "map": {"version":3,"sources":[],"names":[],"mappings":"A"}}]
+}
