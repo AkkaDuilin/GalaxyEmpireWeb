@@ -114,3 +114,4 @@ class Test_Account():
             assert response.status_code == 200
         else:
             assert response.status_code == 400
+
