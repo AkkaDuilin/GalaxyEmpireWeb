@@ -10,14 +10,28 @@ import (
 // It includes fields for the username, password, email, server, and related tasks.
 type Account struct {
 	gorm.Model
+<<<<<<< HEAD
 	Username   string    `gorm:"type:varchar(100);not null;uniqueIndex:idx_username_server"`
 	Password   string    `gorm:"not null"` // MD5 hash
 	Email      string    `gorm:"not null"`
 	Server     string    `gorm:"type:varchar(100);not null;uniqueIndex:idx_username_server"`
 	ExpireAt   time.Time `gorm:"type:TIMESTAMP;null;default:null"`
+=======
+	BaseCasbinEntity
+	Username   string    `gorm:"type:varchar(100);not null;uniqueIndex:idx_username_server"`
+	Password   string    `gorm:"not null"` // MD5 hash TODO:
+	Email      string    `gorm:"not null"`
+	Server     string    `gorm:"type:varchar(100);not null;uniqueIndex:idx_username_server"`
+	ExpireAt   time.Time `gorm:"type:datetime(3);default:CURRENT_TIMESTAMP(3)"`
+>>>>>>> d733262b45f61b4f37efbea836b968e58d901d31
 	UserID     uint
 	RouteTasks []RouteTask `gorm:"foreignKey:AccountID"`
 }
+
+func (account Account) GetEntityPrefix() string {
+	return "account_"
+}
+
 type AccountInfo struct {
 	Username string `json:"username"`
 	Password string `json:"password"` // MD5 hash
