@@ -1,12 +1,21 @@
-// pages/404.tsx
-import React from 'react';
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
 
-const Custom404: React.FC = () => {
+const Custom404 = () => {
   return (
-    <div>
-      <h1>404 - 页面未找到</h1>
-      <p>抱歉，你请求的页面不存在。</p>
-      {/* 你可以添加一个链接，让用户返回首页 */}
+    <div className="flex flex-col items-center justify-center min-h-screen bg-background">
+      <div className="text-center space-y-4">
+        <h1 className="text-6xl font-bold text-primary">404</h1>
+        <h2 className="text-2xl font-semibold text-foreground">Page Not Found</h2>
+        <p className="text-muted-foreground">
+          Sorry, the page you are looking for does not exist.
+        </p>
+        <Link href="/">
+          <Button>
+            Return to Home
+          </Button>
+        </Link>
+      </div>
     </div>
   );
 };
