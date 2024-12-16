@@ -330,11 +330,8 @@ func (service *userService) GetUserRole(ctx context.Context, userID uint) int {
 	)
 
 	// 如果Redis中没有数据，从数据库查询
-<<<<<<< HEAD
-	user, err1 := service.GetById(ctx, userID, []string{})
-=======
+
 	user, err1 := service.getById(ctx, userID, []string{})
->>>>>>> d733262b45f61b4f37efbea836b968e58d901d31
 	if err1 != nil {
 		log.Error("[service]GetUserRole from db failed",
 			zap.String("traceID", traceID),

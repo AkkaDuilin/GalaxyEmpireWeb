@@ -277,46 +277,6 @@ func (service *accountService) isUserAllowed(ctx context.Context, accountID uint
 	if err != nil {
 		return false, utils.NewServiceError(http.StatusInternalServerError, "Failed to check permission", err)
 	}
-<<<<<<< HEAD
-	if exists == 0 {
-		log.Info("[service]Check User Permission - Not in Redis. Retrieving",
-			zap.String("traceID", traceID),
-		)
-		accounts, err := service.GetByUserId(ctx, userID, []string{})
-		if err != nil {
-			return false, utils.NewServiceError(http.StatusInternalServerError, "Service Error", err)
-		}
-		var accountIDs = make([]uint, len(*accounts))
-		// NOTE: Could be optimized by early return
-		for i, account := range *accounts {
-			accountIDs[i] = account.ID
-		}
-		serviceErr := service.cacheUserAccounts(ctx, userID, accountIDs)
-		if serviceErr != nil {
-			return false, serviceErr
-		}
-
-	}
-
-	// 如果键存在，检查集合中是否包含特定元素
-	isMember, err := service.RDB.SIsMember(ctx, key, accountID).Result()
-	// 首先检查错误
-	if err != nil {
-		log.Error("[service]Check User Permission - failed",
-			zap.String("traceID", traceID),
-			zap.String("redis_key", key),
-			zap.Error(err),
-		)
-		return false, utils.NewServiceError(http.StatusInternalServerError, "redis retrieve error", err)
-	}
-
-	log.Info("[service]Check User Permission - Success",
-		zap.String("traceID", traceID),
-		zap.Bool("isMember", isMember),
-	)
-	return isMember, nil
-
-=======
 	log.Info("[AccountService]Check User Permission",
 		zap.String("traceID", utils.TraceIDFromContext(ctx)),
 		zap.String("userID", fmt.Sprint(userID)),
@@ -325,7 +285,6 @@ func (service *accountService) isUserAllowed(ctx context.Context, accountID uint
 	)
 
 	return allowed, nil
->>>>>>> d733262b45f61b4f37efbea836b968e58d901d31
 }
 
 // func (service *accountService) isUserAllowed(ctx context.Context, accountID uint) (bool, *utils.ServiceError) { // TODO: rewrite with casbin
