@@ -74,8 +74,15 @@ export default function UserAuthForm() {
   const onSubmit = async (data: UserFormValue) => {
     try {
       if (!captcha?.captchaId) {
+        console.log('No captcha ID found');
         throw new Error('Captcha not loaded');
       }
+
+      console.log('Sending login request with:', {
+        username: data.username,
+        captchaId: captcha.captchaId,
+        userInput: data.captcha
+      });
 
       const response = await fetch(`${API_BASE_URL}/login`, {
         method: 'POST',
@@ -90,23 +97,39 @@ export default function UserAuthForm() {
         })
       });
 
+      console.log('Response status:', response.status);
+      const result = await response.json();
+      console.log('Full response data:', result);
+
       if (!response.ok) {
-        throw new Error('Login failed');
+        const errorMessage = result.error || result.message || result.msg || 'Unknown error';
+        console.log('Error message:', errorMessage);
+
+        if (errorMessage.includes('record not found')) {
+          toast.error('Login failed: Username does not exist or incorrect password, please try again!');
+        } else if (errorMessage.includes('captcha')) {
+          toast.error('Login failed: Invalid captcha');
+        } else {
+          toast.error(`Login failed: ${errorMessage}`);
+        }
+        getCaptcha();
+        return;
       }
 
-      const { token, user } = await response.json();
+      if (result.token) {
+        localStorage.setItem('token', result.token);
+        localStorage.setItem('user', JSON.stringify(result.user));
+        toast.success('Login successful!');
+        router.push('/dashboard');
+      } else {
+        console.log('No token in successful response');
+        toast.error('Login failed: Invalid response format');
+        getCaptcha();
+      }
 
-      // 存储 Token 和用户信息
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(user));
-
-      toast.success('Login Successful!');
-      router.push('/dashboard'); // 登录成功跳转
-      // 弹出登录成功提示
-      toast.success('Login Successful!');
     } catch (error) {
-      toast.error('Login Failed');
-      // 刷新验证码
+      console.error('Login error:', error);
+      toast.error('Login failed: Please try again');
       getCaptcha();
     }
   };
