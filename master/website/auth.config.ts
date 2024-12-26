@@ -19,14 +19,6 @@ export const authConfig = {
           label: 'Verification Code'
         }
       },
-      async authorize(credentials) {
-        try {
-          // ... 你的验证逻辑
-          return null
-        } catch (error) {
-          return null
-        }
-      }
     })
   ],
   callbacks: {

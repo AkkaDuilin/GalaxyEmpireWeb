@@ -178,12 +178,12 @@ export default function UserAuthForm() {
                 <FormControl>
                   <Input placeholder="Enter captcha..." {...field} />
                 </FormControl>
-                <div className="relative h-10 w-24">
+                <div className="relative h-10 w-24 bg-white rounded-md overflow-hidden">
                   {captcha?.captchaImg && (
                     <img
                       src={`${captcha.captchaImg}`}
                       alt="captcha"
-                      className="h-full w-full cursor-pointer object-contain"
+                      className="h-full w-full cursor-pointer object-contain bg-white"
                       onClick={() => getCaptcha()}
                     />
                   )}

@@ -87,3 +87,4 @@ export default function RegisterViewPage() {
      </div>
    </div>
  );
+}
