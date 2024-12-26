@@ -4,21 +4,24 @@ import (
 	"GalaxyEmpireWeb/consts"
 	"GalaxyEmpireWeb/logger"
 	"GalaxyEmpireWeb/models"
+	"GalaxyEmpireWeb/services/casbinservice"
+	"GalaxyEmpireWeb/services/taskservice"
 	"GalaxyEmpireWeb/utils"
 	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
+	"time"
 
-	r "github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
 type accountService struct {
-	DB  *gorm.DB
-	RDB *r.Client
+	DB       *gorm.DB
+	Enforcer casbinservice.Enforcer
 }
 
 var accountServiceInstance *accountService
@@ -26,20 +29,25 @@ var log = logger.GetLogger()
 var accountListPrefix = consts.UserAccountPrefix
 var expireTime = consts.ProdExpire
 
-func NewService(db *gorm.DB, rdb *r.Client) *accountService {
+const (
+	READ  = 1
+	WRITE = 2
+)
+
+func NewService(db *gorm.DB, enforcer casbinservice.Enforcer) *accountService {
 	return &accountService{
-		DB:  db,
-		RDB: rdb,
+		DB:       db,
+		Enforcer: enforcer,
 	}
 }
-func InitService(db *gorm.DB, rdb *r.Client) error {
+func InitService(db *gorm.DB, enforcer casbinservice.Enforcer) error {
 	if accountServiceInstance != nil {
 		return errors.New("AccountService is already initialized")
 	}
 	if os.Getenv("ENV") == "test" {
 		expireTime = consts.TestExipre
 	}
-	accountServiceInstance = NewService(db, rdb)
+	accountServiceInstance = NewService(db, enforcer)
 	log.Info("[service] Account service Initialized")
 	return nil
 }
@@ -62,7 +70,7 @@ func (service *accountService) GetById(ctx context.Context, id uint, fields []st
 		zap.String("traceID", traceID),
 	)
 
-	allowed, serviceErr := service.isUserAllowed(ctx, id)
+	allowed, serviceErr := service.isUserAllowed(ctx, id, casbinservice.READ)
 	if serviceErr != nil {
 		return nil, serviceErr
 	}
@@ -135,9 +143,36 @@ func (service *accountService) Create(ctx context.Context, account *models.Accou
 		zap.String("username", account.Username),
 		zap.String("traceID", traceID),
 	)
+
+	// Start transaction
+	tx := service.DB.Begin()
+	if tx.Error != nil {
+		log.Error("[service]Failed to start database transaction",
+			zap.String("traceID", traceID),
+			zap.Error(tx.Error),
+		)
+		return utils.NewServiceError(http.StatusInternalServerError, "Failed to start database transaction", tx.Error)
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+			log.Error("[service]Panic recovered in Create Account",
+				zap.String("traceID", traceID),
+				zap.Any("panic", r),
+			)
+		}
+	}()
+
 	account.UserID = userID
-	err := service.DB.Create(account).Error
-	if err != nil {
+	account.ExpireAt = time.Now()
+	if err := tx.Create(account).Error; err != nil {
+		tx.Rollback()
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			log.Info("[service]Create Account failed - Account already exists",
+				zap.String("traceID", traceID),
+			)
+			return utils.NewServiceError(http.StatusConflict, "Account already exists", err)
+		}
 		log.Error("[service]Create Account failed",
 			zap.String("traceID", traceID),
 			zap.Uint("userId", userID),
@@ -145,6 +180,36 @@ func (service *accountService) Create(ctx context.Context, account *models.Accou
 		)
 		return utils.NewServiceError(http.StatusInternalServerError, "failed create account", err)
 	}
+
+	// Add policies in batch using the same transaction
+	policies := [][]string{
+		{strconv.Itoa(int(userID)), account.GetEntityPrefix() + fmt.Sprint(account.ID), "write"},
+		{strconv.Itoa(int(userID)), account.GetEntityPrefix() + fmt.Sprint(account.ID), "read"},
+	}
+
+	if _, err := service.Enforcer.AddPolicies(ctx, tx, policies); err != nil {
+		tx.Rollback()
+		log.Error("[service]Create Account failed - Add Policies",
+			zap.String("traceID", traceID),
+			zap.Error(err),
+			zap.Any("policies", policies),
+		)
+		return utils.NewServiceError(http.StatusInternalServerError, "Failed to add policies", err)
+	}
+
+	// Commit the transaction
+	if err := tx.Commit().Error; err != nil {
+		tx.Rollback()
+		log.Error("[service]Failed to commit transaction",
+			zap.String("traceID", traceID),
+			zap.Error(err),
+		)
+		return utils.NewServiceError(http.StatusInternalServerError, "Failed to commit transaction", err)
+	}
+
+	// Reload policies after successful creation
+	go service.Enforcer.ReloadPolicy()
+
 	return nil
 }
 
@@ -156,7 +221,7 @@ func (service *accountService) Update(ctx context.Context, account *models.Accou
 		zap.String("traceID", traceID),
 	)
 
-	allowed, serviceErr := service.isUserAllowed(ctx, account.ID)
+	allowed, serviceErr := service.isUserAllowed(ctx, account.ID, casbinservice.WRITE)
 	if serviceErr != nil {
 		return serviceErr
 	}
@@ -171,27 +236,59 @@ func (service *accountService) Update(ctx context.Context, account *models.Accou
 		)
 	}
 
-	err := service.DB.Save(account).Error
-	if err != nil {
+	// Start transaction
+	tx := service.DB.Begin()
+	if tx.Error != nil {
+		log.Error("[service]Failed to start database transaction",
+			zap.String("traceID", traceID),
+			zap.Error(tx.Error),
+		)
+		return utils.NewServiceError(http.StatusInternalServerError, "Failed to start database transaction", tx.Error)
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+			log.Error("[service]Panic recovered in Update Account",
+				zap.String("traceID", traceID),
+				zap.Any("panic", r),
+			)
+		}
+	}()
+
+	// Perform update within transaction
+	if err := tx.Save(account).Error; err != nil {
+		tx.Rollback()
 		log.Error("[service]Update Account failed",
 			zap.String("traceID", traceID),
 			zap.Error(err),
 		)
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return utils.NewServiceError(http.StatusNotFound, "Account Not found", err)
 		}
 		return utils.NewServiceError(http.StatusInternalServerError, "Failed to Update Account", err)
 	}
+
+	// Commit the transaction
+	if err := tx.Commit().Error; err != nil {
+		tx.Rollback()
+		log.Error("[service]Failed to commit transaction",
+			zap.String("traceID", traceID),
+			zap.Error(err),
+		)
+		return utils.NewServiceError(http.StatusInternalServerError, "Failed to commit transaction", err)
+	}
+
 	return nil
 }
 
 func (service *accountService) Delete(ctx context.Context, ID uint) *utils.ServiceError {
 	traceID := utils.TraceIDFromContext(ctx)
 	log.Info("[service]Delete Account Info",
-		zap.Uint("userId", ID),
+		zap.Uint("accountID", ID),
 		zap.String("traceID", traceID),
 	)
-	allowed, serviceErr := service.isUserAllowed(ctx, ID)
+
+	allowed, serviceErr := service.isUserAllowed(ctx, ID, casbinservice.WRITE)
 	if serviceErr != nil {
 		return serviceErr
 	}
@@ -201,128 +298,80 @@ func (service *accountService) Delete(ctx context.Context, ID uint) *utils.Servi
 		)
 		return utils.NewServiceError(http.StatusUnauthorized, "User has no Permission", nil)
 	}
+
 	result := service.DB.Delete(&models.Account{}, ID)
-	err := result.Error
-	if result.RowsAffected == 0 {
-		return utils.NewServiceError(http.StatusNotFound, "Account Not found", err)
-	}
-	if err != nil {
+	if result.Error != nil {
 		log.Info("[service]Delete Account failed",
 			zap.String("traceID", traceID),
 		)
-		return utils.NewServiceError(http.StatusInternalServerError, "Failed to delete user", err)
-
+		return utils.NewServiceError(http.StatusInternalServerError, "Failed to delete user", result.Error)
 	}
+
 	if result.RowsAffected == 0 {
 		log.Warn("[server]Delete Account failed - no such user",
 			zap.String("traceID", traceID),
 		)
 		return utils.NewServiceError(http.StatusNotFound, "Account not found", nil)
 	}
-	return nil
 
+	return nil
+}
+
+func (service *accountService) RequestCheckingAccountLogin(ctx context.Context, account *models.Account) (string, *utils.ServiceError) {
+	traceID := utils.TraceIDFromContext(ctx)
+	log.Info("[service]Check Account Available",
+		zap.String("traceID", traceID),
+		zap.String("username", account.Username),
+	)
+	taskservice := taskservice.GetService()
+	uuid, err := taskservice.CheckAccountLogin(ctx, account)
+	if err != nil {
+		log.Error("[service]Check Account Available failed",
+			zap.String("traceID", traceID),
+			zap.Error(err),
+		)
+		return "", err
+	}
+	return uuid, nil
+}
+
+func (serveice *accountService) GetLoginInfo(ctx context.Context, uuid string) bool {
+	traceID := utils.TraceIDFromContext(ctx)
+	log.Info("[service]Get Login Info",
+		zap.String("traceID", traceID),
+		zap.String("uuid", uuid),
+	)
+	taskservice := taskservice.GetService()
+	return taskservice.GetLoginInfo(ctx, uuid)
 }
 
 // ________________________________
 // |  Private Functions         |
-
-func (service *accountService) isUserAllowed(ctx context.Context, accountID uint) (bool, *utils.ServiceError) {
-	traceID := utils.TraceIDFromContext(ctx)
-	userID1 := ctx.Value("userID")
-	if userID1 == nil {
+func (service *accountService) isUserAllowed(ctx context.Context, accountID uint, rw int) (bool, *utils.ServiceError) {
+	userID, ok := ctx.Value("userID").(uint)
+	if !ok {
 		log.Warn("[service]Check User Permission - No userID in context",
-			zap.String("traceID", traceID),
+			zap.String("traceID", utils.TraceIDFromContext(ctx)),
 		)
 		return false, utils.NewServiceError(http.StatusInternalServerError, "No userID in context", nil)
 	}
-	userID := userID1.(uint)
-	log.Info("[service]Check User Permission",
-		zap.Uint("userID", userID),
+	log.Info("[AccountService]Check User Permission",
+		zap.String("traceID", utils.TraceIDFromContext(ctx)),
 		zap.Uint("accountID", accountID),
-		zap.String("traceID", traceID),
-	)
-	if userID == 0 {
-		log.Warn("[service]Check User Permission - No userID in context",
-			zap.String("traceID", traceID),
-		)
-		return false, utils.NewServiceError(http.StatusInternalServerError, "No userID in context", nil)
-	}
-	key := fmt.Sprintf("%s%d", accountListPrefix, userID)
-
-	// 首先检查键是否存在
-	exists, err := service.RDB.Exists(ctx, key).Result()
-	if err != nil {
-		log.Warn("[service]Check User Permission failed - redis check exists",
-			zap.String("traceID", traceID),
-			zap.String("redis_key", key),
-			zap.Error(err),
-		)
-	}
-	if exists == 0 {
-		log.Info("[service]Check User Permission - Not in Redis. Retrieving",
-			zap.String("traceID", traceID),
-		)
-		accounts, err := service.GetByUserId(ctx, userID, []string{})
-		if err != nil {
-			return false, utils.NewServiceError(http.StatusInternalServerError, "Service Error", err)
-		}
-		var accountIDs = make([]uint, len(*accounts))
-		// NOTE: Could be optimized by early return
-		for i, account := range *accounts {
-			accountIDs[i] = account.ID
-		}
-		serviceErr := service.cacheUserAccounts(ctx, userID, accountIDs)
-		if serviceErr != nil {
-			return false, serviceErr
-		}
-
-	}
-
-	// 如果键存在，检查集合中是否包含特定元素
-	isMember, err := service.RDB.SIsMember(ctx, key, accountID).Result()
-	// 首先检查错误
-	if err != nil {
-		log.Error("[service]Check User Permission - failed",
-			zap.String("traceID", traceID),
-			zap.String("redis_key", key),
-			zap.Error(err),
-		)
-		return false, utils.NewServiceError(http.StatusInternalServerError, "redis retrieve error", err)
-	}
-
-	log.Info("[service]Check User Permission - Success",
-		zap.String("traceID", traceID),
-		zap.Bool("isMember", isMember),
-	)
-	return isMember, nil
-
-}
-
-func (service *accountService) cacheUserAccounts(ctx context.Context, userID uint, accountIDs []uint) *utils.ServiceError {
-	key := fmt.Sprintf("%s%d", accountListPrefix, userID)
-
-	// 使用pipeline批量添加元素以提高性能
-	pipe := service.RDB.Pipeline()
-	for _, accountID := range accountIDs {
-		pipe.SAdd(ctx, key, accountID)
-	}
-
-	pipe.Expire(ctx, key, expireTime)
-
-	// 执行pipeline
-	_, err := pipe.Exec(ctx)
-	if err != nil {
-		log.Error("[service]Error caching user accounts",
-			zap.Uint("userID", userID),
-			zap.Error(err),
-		)
-		return utils.NewServiceError(http.StatusInternalServerError, "redis cache error", err)
-	}
-
-	log.Info("[service]User accounts cached successfully",
-		zap.Uint("userID", userID),
-		zap.Int("accountsCount", len(accountIDs)),
+		zap.String("userID", fmt.Sprint(userID)),
+		zap.Int("rw", rw),
 	)
 
-	return nil
+	obj := fmt.Sprintf("%s%d", models.Account{}.GetEntityPrefix(), accountID)
+	opt := "read"
+	if rw&WRITE == WRITE {
+		opt = "write"
+	}
+
+	allowed, err := service.Enforcer.Enforce(ctx, fmt.Sprint(userID), obj, opt)
+	if err != nil {
+		return false, utils.NewServiceError(http.StatusInternalServerError, "Failed to check permission", err)
+	}
+
+	return allowed, nil
 }

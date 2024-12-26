@@ -4,20 +4,49 @@ import "gorm.io/gorm"
 
 type Fleet struct {
 	gorm.Model
-	BaseCasbinEntity
-	Name       string      `json:"name"`
-	Ships      []Ship      `gorm:"foreignKey:FleetID"`          // 使用 hasMany 关系，指定外键
-	RouteTasks []RouteTask `gorm:"many2many:route_task_fleet;"` // many2many 关系
+	LightFighter int  `json:"lf"`
+	HeavyFighter int  `json:"hf"`
+	Cruiser      int  `json:"cr"`
+	Battleship   int  `json:"bs"`
+	Dreadnought  int  `json:"dr"`
+	Destroyer    int  `json:"de"`
+	Deathstar    int  `json:"ds"`
+	Bomber       int  `json:"bomb"`
+	Guardian     int  `json:"guard"`
+	Satellite    int  `json:"satellite"`
+	Cargo        int  `json:"cargo"`
+	TaskID       uint `json:"task_id"`
 }
 
+type FleetDTO struct {
+	LightFighter int `json:"lf"`
+	HeavyFighter int `json:"hf"`
+	Cruiser      int `json:"cr"`
+	Battleship   int `json:"bs"`
+	Dreadnought  int `json:"dr"`
+	Destroyer    int `json:"de"`
+	Deathstar    int `json:"ds"`
+	Bomber       int `json:"bomb"`
+	Guardian     int `json:"guard"`
+	Satellite    int `json:"satellite"`
+	Cargo        int `json:"cargo"`
+}
+
+func (fleet Fleet) ToDTO() *FleetDTO {
+	return &FleetDTO{
+		LightFighter: fleet.LightFighter,
+		HeavyFighter: fleet.HeavyFighter,
+		Cruiser:      fleet.Cruiser,
+		Battleship:   fleet.Battleship,
+		Dreadnought:  fleet.Dreadnought,
+		Destroyer:    fleet.Destroyer,
+		Deathstar:    fleet.Deathstar,
+		Bomber:       fleet.Bomber,
+		Guardian:     fleet.Guardian,
+		Satellite:    fleet.Satellite,
+		Cargo:        fleet.Cargo,
+	}
+}
 func (fleet Fleet) GetEntityPrefix() string {
 	return "fleet_"
-}
-
-type Ship struct {
-	gorm.Model
-	FleetID uint   // 外键，指向 Fleet
-	Name    string `json:"name"`
-	Parm    string `json:"parm"`
-	Number  int    `json:"number"`
 }
