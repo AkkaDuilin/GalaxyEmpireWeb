@@ -7,7 +7,10 @@ import (
 	"GalaxyEmpireWeb/logger"
 	"GalaxyEmpireWeb/models"
 	"GalaxyEmpireWeb/services/accountservice"
+	"GalaxyEmpireWeb/utils"
+	"errors"
 	"net/http"
+	"net/mail"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -176,6 +179,21 @@ func CreateAccount(c *gin.Context) {
 		return
 
 	}
+	err1 := verifyAccount(c, &account)
+	if err1 != nil {
+		log.Error("[api]Create Account failed",
+			zap.String("traceID", traceID),
+			zap.Error(err1),
+		)
+		c.JSON(err1.StatusCode(), api.ErrorResponse{
+			Succeed: false,
+			Error:   err1.Error(),
+			Message: err1.Msg(),
+			TraceID: traceID,
+		})
+		return
+	}
+
 	accountService, _ := accountservice.GetService(c)
 	serviceErr := accountService.Create(c, &account)
 	if serviceErr != nil {
@@ -221,6 +239,12 @@ func DeleteAccount(c *gin.Context) {
 			zap.String("traceID", traceID),
 			zap.Error(err),
 		)
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Succeed: false,
+			Error:   err.Error(),
+			Message: "Bad Request",
+			TraceID: traceID,
+		})
 	}
 	accountService, _ := accountservice.GetService(c)
 	serviceErr := accountService.Delete(c, account.ID)
@@ -243,4 +267,110 @@ func DeleteAccount(c *gin.Context) {
 		TraceID: traceID,
 	})
 
+}
+
+type accountCheckingResponse struct {
+	Succeed bool   `json:"succeed"`
+	TraceID string `json:"traceID"`
+	UUID    string `json:"uuid"`
+}
+
+// CheckAccountAvailable godoc
+// @Summary Check Account Available
+// @Description Check Account Available
+// @Tags account
+// @Accept json
+// @Produce json
+// @Param account body models.Account true "Account"
+// @Success 200 {object} accountCheckingResponse "Successful response with account data"
+// @Failure 400 {object} api.ErrorResponse "Bad Request with error message"
+// @Failure 500 {object} api.ErrorResponse "Internal Server Error"
+// @Router /account/check [POST]
+
+func CheckAccountAvailable(c *gin.Context) {
+	traceID := utils.TraceIDFromContext(c)
+	var account models.Account
+	err := c.ShouldBindJSON(&account)
+	if err != nil {
+		log.Error("[api]Check Account Available failed",
+			zap.String("traceID", traceID),
+			zap.Error(err),
+		)
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Succeed: false,
+			Error:   err.Error(),
+			Message: "Bad Request",
+			TraceID: traceID,
+		})
+		return
+	}
+	accountService, _ := accountservice.GetService(c)
+	uuid, serviceErr := accountService.RequestCheckingAccountLogin(c, &account)
+	if serviceErr != nil {
+		log.Error("[api]Check Account Available failed",
+			zap.String("traceID", traceID),
+			zap.Error(serviceErr),
+		)
+		c.JSON(serviceErr.StatusCode(), api.ErrorResponse{
+			Succeed: false,
+			Error:   serviceErr.Error(),
+			Message: serviceErr.Msg(),
+			TraceID: traceID,
+		})
+		return
+	}
+	c.JSON(http.StatusOK, accountCheckingResponse{
+		Succeed: false, // Keep false because the task is not done yet
+		TraceID: traceID,
+		UUID:    uuid,
+	})
+}
+
+// CheckAccountByUUID godoc
+// @Summary Check Account By UUID
+// @Description Check Account By UUID
+// @Tags Account
+// @Param uuid path string true "UUID"
+// @Produce JSON
+// @Success 200 {object} accountCheckingResponse "Successful response with account data"
+// @Failure 400 {object} api.ErrorResponse "Bad Request with error message"
+// @Failure 500 {object} api.ErrorResponse "Internal Server Error"
+// @Router /account/check/{uuid} [GET]
+
+func CheckAccountByUUID(c *gin.Context) {
+	traceID := utils.TraceIDFromContext(c)
+	uuid := c.Param("uuid")
+	accountService, _ := accountservice.GetService(c)
+	result := accountService.GetLoginInfo(c, uuid)
+	c.JSON(http.StatusOK, accountCheckingResponse{
+		Succeed: result,
+		TraceID: traceID,
+		UUID:    uuid,
+	})
+
+}
+func verifyAccount(c *gin.Context, account *models.Account) *utils.ApiError {
+	traceID := c.GetString("traceID")
+	log.Info("[api]Verify Account",
+		zap.String("traceID", traceID),
+		zap.String("username", account.Username),
+		zap.String("email", account.Email),
+	)
+	if account.Username == "" {
+		return utils.NewApiError(http.StatusBadRequest, "Username is required", errors.New("Username is required"))
+	}
+	if account.Password == "" {
+		return utils.NewApiError(http.StatusBadRequest, "Password is required", errors.New("Password is required"))
+	}
+	if account.Email == "" {
+		return utils.NewApiError(http.StatusBadRequest, "Email is required", errors.New("Email is required"))
+	}
+
+	_, err := mail.ParseAddress(account.Email)
+	if err != nil {
+		return utils.NewApiError(http.StatusBadRequest, "Invalid Email", err)
+	}
+	log.Info("[api]Verify Account - Succeed", zap.String("traceID", traceID))
+
+	return nil
 }

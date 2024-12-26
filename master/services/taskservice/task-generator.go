@@ -1,100 +1,182 @@
 package taskservice
 
 import (
+	"GalaxyEmpireWeb/config"
 	"GalaxyEmpireWeb/models"
-	"GalaxyEmpireWeb/queue"
-	"GalaxyEmpireWeb/utils"
-	"context"
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"go.uber.org/zap"
-	"gorm.io/gorm"
 )
 
-type TaskGenerator struct {
-	db          *gorm.DB
-	mq          *queue.RabbitMQConnection
-	taskService *taskService
-}
+func (ts *taskService) GenerateAllTask() {
+	var accounts []*models.Account
 
-func initTaskGenerator(db *gorm.DB, mq *queue.RabbitMQConnection, taskService *taskService) *TaskGenerator {
-	return &TaskGenerator{
-		db:          db,
-		mq:          mq,
-		taskService: taskService,
+	if err := ts.DB.Preload("Tasks").
+		Preload("Tasks.Targets"). // 通过 Tasks 预加载 Targets
+		Preload("Tasks.Fleet").
+		Where("expire_at > ?", time.Now()).
+		Find(&accounts).Error; err != nil {
+		log.Error("[TaskService::GenerateTask] failed to fetch accounts", zap.Error(err))
+		return
+	}
+
+	for _, account := range accounts {
+		currentAccount := account // avoid closure problem
+		go func() {
+			err := ts.GenerateTaskForAccount(currentAccount)
+			if err != nil {
+				log.Error("[TaskService::GenerateTask] failed to generate task for account", zap.Error(err))
+			}
+		}()
 	}
 }
 
-func (generator *TaskGenerator) setAccountInfo(ctx context.Context, task models.Task) error {
-	traceID := utils.TraceIDFromContext(ctx)
-	var account models.Account
-	log.Info("[service]Get account",
-		zap.Uint("accountID", task.GetAccountID()),
-		zap.String("traceID", traceID),
-	)
-
-	result := generator.db.Where("id = ?", task.GetAccountID()).First(&account)
-	if err := result.Error; err != nil {
-		log.Error("[service]Get account error",
-			zap.String("traceID", traceID),
-			zap.Error(err),
-		)
-		return err
-
+func (ts *taskService) GenerateSingleTask(task *models.Task, account *models.Account) *models.SingleTaskRequest {
+	nextStart := time.Unix(task.NextStart, 0)
+	if !task.Enabled ||
+		task.Status != models.TaskStatusMap[models.TASK_STATUS_READY] ||
+		time.Until(nextStart) > config.QUEUE_THRESHOLD { // 如果距离执行时间超过1小时
+		reason := "unknown"
+		if !task.Enabled {
+			reason = "task disabled"
+		} else if task.Status != models.TaskStatusMap[models.TASK_STATUS_READY] {
+			reason = "task not in ready status"
+		} else if time.Until(nextStart) > config.QUEUE_THRESHOLD {
+			reason = "too early to generate"
+		}
+		log.Info("[TaskService::GenerateSingleTask] task not ready",
+			zap.String("task", task.Name),
+			zap.Uint("task_id", task.ID),
+			zap.Time("next_start", nextStart),
+			zap.Time("now", time.Now()),
+			zap.Duration("time_until_start", time.Until(nextStart)),
+			zap.String("reason", reason))
+		return nil
 	}
-	task.SetAccountInfo(*account.ToInfo())
+	log.Info("[TaskService::GenerateSingleTask] generating single task",
+		zap.String("task", task.Name),
+		zap.Uint("task_id", task.ID),
+		zap.Time("next_start", nextStart),
+		zap.Time("now", time.Now()))
+
+	// Generate single task request without DB operations
+	singleTask, err := task.ToSingleTaskRequest(account)
+	if err != nil {
+		log.Error("[TaskService::GenerateSingleTask] failed to convert task to single task", zap.Error(err))
+		return nil
+	}
+
+	return singleTask
+}
+
+func (ts *taskService) GenerateTaskForAccount(account *models.Account) error {
+	fourHoursAgo := time.Now().Add(-4 * time.Hour)
+
+	for _, task := range account.Tasks {
+		// Reset long-running tasks to ready status
+		if task.Status == models.TaskStatusMap[models.TASK_STATUS_RUNNING] &&
+			time.Unix(task.NextStart, 0).Before(fourHoursAgo) {
+			log.Warn("[TaskService::GenerateTaskForAccount] task stuck in running state, resetting to ready",
+				zap.Uint("task_id", task.ID),
+				zap.String("task_name", task.Name),
+				zap.Time("next_start", time.Unix(task.NextStart, 0)))
+
+			if err := ts.DB.Model(&task).Update("status", models.TaskStatusMap[models.TASK_STATUS_READY]).Error; err != nil {
+				log.Error("[TaskService::GenerateTaskForAccount] failed to reset task status",
+					zap.Error(err))
+				continue
+			}
+			task.Status = models.TaskStatusMap[models.TASK_STATUS_READY]
+		}
+
+		// Check and reset NextIndex if it's invalid
+		if task.NextIndex >= len(task.Targets) {
+			log.Warn("[TaskService::GenerateTaskForAccount] invalid next_index, resetting to 0",
+				zap.Uint("task_id", task.ID),
+				zap.Int("next_index", task.NextIndex),
+				zap.Int("targets_length", len(task.Targets)))
+			task.NextIndex = 0
+			if err := ts.DB.Model(&task).Update("next_index", 0).Error; err != nil {
+				log.Error("[TaskService::GenerateTaskForAccount] failed to reset next_index",
+					zap.Error(err))
+				continue
+			}
+		}
+
+		if singleTask := ts.GenerateSingleTask(&task, account); singleTask != nil {
+			// Start transaction
+			tx := ts.DB.Begin()
+			if err := tx.Error; err != nil {
+				return fmt.Errorf("failed to begin transaction: %v", err)
+			}
+
+			// Lock task record
+			if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&models.Task{}, task.ID).Error; err != nil {
+				tx.Rollback()
+				return fmt.Errorf("failed to lock task: %v", err)
+			}
+
+			// Create task log
+			taskLog := models.TaskLog{
+				TaskID: task.ID,
+				UUID:   singleTask.UUID,
+				Status: models.TASK_RESULT_RUNNING,
+			}
+			if err := tx.Create(&taskLog).Error; err != nil {
+				tx.Rollback()
+				return fmt.Errorf("failed to create task log: %v", err)
+			}
+
+			// Update task's NextIndex
+			if err := tx.Model(&task).Update("next_index", task.NextIndex).Error; err != nil {
+				tx.Rollback()
+				return fmt.Errorf("failed to update next_index: %v", err)
+			}
+
+			// Commit transaction
+			if err := tx.Commit().Error; err != nil {
+				return fmt.Errorf("failed to commit transaction: %v", err)
+			}
+
+			// Convert to JSON and send message
+			nextStart := time.Unix(singleTask.NextStart, 0)
+			taskJson, err := json.Marshal(singleTask)
+			if err != nil {
+				return fmt.Errorf("failed to marshal task: %v", err)
+			}
+
+			delay := time.Until(nextStart)
+			if delay < 0 {
+				delay = time.Duration(config.TASK_DELAY) * time.Second
+			}
+			log.Debug("[TaskService::GenerateTaskForAccount] delay",
+				zap.Int64("delay", delay.Milliseconds()),
+				zap.String("task", string(taskJson)))
+
+			// Send delayed message
+			routingKey := config.TASK_QUEUE_NAME
+			if err := ts.MQ.SendDelayedMessage(string(taskJson), routingKey, delay); err != nil {
+				return fmt.Errorf("failed to send delayed message: %v", err)
+			}
+
+			// Update task status
+			task.Status = models.TaskStatusMap[models.TASK_STATUS_RUNNING]
+			if err := ts.DB.Save(&task).Error; err != nil {
+				return fmt.Errorf("failed to save task: %v", err)
+			}
+		}
+	}
 	return nil
 }
 
-func generateTasks[T models.Task](ctx context.Context, now time.Time, tasks []T, generator TaskGenerator) {
-	traceID := utils.TraceIDFromContext(ctx)
-
-	var accountIDs []uint
-	generator.db.Model(&models.Account{}).Where("expire_at > ?", now).Pluck("id", &accountIDs)
-
-	generator.db.
-		Where("account_id IN ?", accountIDs).
-		Where("next_start < ?", now).
-		Where("enabled = ?", true).
-		Find(&tasks)
-
-	for _, task := range tasks {
-		if err := generator.setAccountInfo(ctx, task); err != nil {
-			continue
-		}
-		if err := generator.taskService.SendTask(task); err != nil {
-			log.Warn("[service]Send task error",
-				zap.String("traceID", traceID),
-				zap.Error(err),
-				zap.String("task_type", task.TaskType()),
-			)
-			continue
-		}
-		log.Info("[service]Send task success",
-			zap.Uint("TaskID", task.GetID()),
-			zap.String("traceID", traceID),
-		)
-	}
-}
-
-func (generator *TaskGenerator) generateRouteTask(ctx context.Context) {
-	var routeTasks []*models.RouteTask
-	now := time.Now()
-	generateTasks(ctx, now, routeTasks, *generator)
-}
-
-func (generator *TaskGenerator) generatePlanTask(ctx context.Context) {
-	var planTasks []*models.PlanTask
-	now := time.Now()
-	generateTasks(ctx, now, planTasks, *generator)
-}
-
-func (generator *TaskGenerator) FindAllTasks() {
+func (ts *taskService) GenerateTaskLoop() {
+	time.Sleep(5 * time.Second)
+	log.Info("[TaskService::GenerateTaskLoop] start task generator loop")
 	for {
-		routeCTX := utils.NewContextWithTraceID()
-		generator.generateRouteTask(routeCTX)
-		generator.generatePlanTask(routeCTX)
-		time.Sleep(15 * time.Second)
+		ts.GenerateAllTask()
+		log.Info("[TaskService::GenerateTaskLoop] generate all task")
+		time.Sleep(config.TASK_GENERATOR_INTERVAL)
 	}
-
 }

@@ -301,7 +301,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Successful response with JWT token",
                         "schema": {
-                            "$ref": "#/definitions/auth.succeedResponse"
+                            "$ref": "#/definitions/auth.authResponse"
                         }
                     },
                     "400": {
@@ -337,6 +337,152 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/api.responseMessage"
+                        }
+                    }
+                }
+            }
+        },
+        "/task": {
+            "post": {
+                "description": "Add a task",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "task"
+                ],
+                "summary": "Add a task",
+                "parameters": [
+                    {
+                        "description": "Task",
+                        "name": "task",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.Task"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response with task ID",
+                        "schema": {
+                            "$ref": "#/definitions/task.taskResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request with error message",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error with error message",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/task/account/{id}": {
+            "get": {
+                "description": "Get Task by Account ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "task"
+                ],
+                "summary": "Get task by Account ID",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Account ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response with account data",
+                        "schema": {
+                            "$ref": "#/definitions/task.accountTaskResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request with error message",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found with error message",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error with error message",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/task/{id}": {
+            "get": {
+                "description": "Get Task by ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "task"
+                ],
+                "summary": "Get task by ID",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Task ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful response with task data",
+                        "schema": {
+                            "$ref": "#/definitions/task.taskResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request with error message",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found with error message",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error with error message",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     }
                 }
@@ -398,7 +544,7 @@ const docTemplate = `{
                 "tags": [
                     "user"
                 ],
-                "summary": "Crea user",
+                "summary": "Create user",
                 "parameters": [
                     {
                         "description": "User ID or Username",
@@ -674,7 +820,7 @@ const docTemplate = `{
                 }
             }
         },
-        "auth.succeedResponse": {
+        "auth.authResponse": {
             "type": "object",
             "properties": {
                 "token": {
@@ -713,17 +859,17 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "password": {
-                    "description": "MD5 hash",
+                    "description": "MD5 hash TODO:",
                     "type": "string"
-                },
-                "routeTasks": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/models.RouteTask"
-                    }
                 },
                 "server": {
                     "type": "string"
+                },
+                "tasks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Task"
+                    }
                 },
                 "updatedAt": {
                     "type": "string"
@@ -748,29 +894,14 @@ const docTemplate = `{
                 "id": {
                     "type": "integer"
                 },
-                "route_tasks": {
+                "server": {
+                    "type": "string"
+                },
+                "tasks": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/models.RouteTask"
+                        "$ref": "#/definitions/models.TaskDTO"
                     }
-                },
-                "server": {
-                    "type": "string"
-                },
-                "username": {
-                    "type": "string"
-                }
-            }
-        },
-        "models.AccountInfo": {
-            "type": "object",
-            "properties": {
-                "password": {
-                    "description": "MD5 hash",
-                    "type": "string"
-                },
-                "server": {
-                    "type": "string"
                 },
                 "username": {
                     "type": "string"
@@ -780,34 +911,93 @@ const docTemplate = `{
         "models.Fleet": {
             "type": "object",
             "properties": {
+                "bomb": {
+                    "type": "integer"
+                },
+                "bs": {
+                    "type": "integer"
+                },
+                "cargo": {
+                    "type": "integer"
+                },
+                "cr": {
+                    "type": "integer"
+                },
                 "createdAt": {
                     "type": "string"
+                },
+                "de": {
+                    "type": "integer"
                 },
                 "deletedAt": {
                     "$ref": "#/definitions/gorm.DeletedAt"
                 },
+                "dr": {
+                    "type": "integer"
+                },
+                "ds": {
+                    "type": "integer"
+                },
+                "guard": {
+                    "type": "integer"
+                },
+                "hf": {
+                    "type": "integer"
+                },
                 "id": {
                     "type": "integer"
                 },
-                "routeTasks": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/models.RouteTask"
-                    }
+                "lf": {
+                    "type": "integer"
+                },
+                "satellite": {
+                    "type": "integer"
+                },
+                "task_id": {
+                    "type": "integer"
                 },
                 "updatedAt": {
                     "type": "string"
                 }
             }
         },
-        "models.RouteTask": {
+        "models.Target": {
             "type": "object",
             "properties": {
-                "accountID": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "deletedAt": {
+                    "$ref": "#/definitions/gorm.DeletedAt"
+                },
+                "galaxy": {
                     "type": "integer"
                 },
-                "accountInfo": {
-                    "$ref": "#/definitions/models.AccountInfo"
+                "id": {
+                    "type": "integer"
+                },
+                "is_moon": {
+                    "type": "boolean"
+                },
+                "planet": {
+                    "type": "integer"
+                },
+                "system": {
+                    "type": "integer"
+                },
+                "task_id": {
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.Task": {
+            "type": "object",
+            "properties": {
+                "account_id": {
+                    "type": "integer"
                 },
                 "createdAt": {
                     "type": "string"
@@ -818,26 +1008,71 @@ const docTemplate = `{
                 "enabled": {
                     "type": "boolean"
                 },
-                "fleets": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/models.Fleet"
-                    }
-                },
-                "from": {
-                    "$ref": "#/definitions/models.Star"
+                "fleet": {
+                    "$ref": "#/definitions/models.Fleet"
                 },
                 "id": {
                     "type": "integer"
                 },
-                "logs": {
+                "name": {
+                    "type": "string"
+                },
+                "next_index": {
+                    "type": "integer"
+                },
+                "next_start": {
+                    "description": "Unix timestamp seconds",
+                    "type": "integer"
+                },
+                "repeat": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "target_num": {
+                    "type": "integer"
+                },
+                "targets": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/models.taskLog"
+                        "$ref": "#/definitions/models.Target"
                     }
+                },
+                "task_type": {
+                    "type": "integer"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.TaskDTO": {
+            "type": "object",
+            "properties": {
+                "account_id": {
+                    "type": "integer"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "deletedAt": {
+                    "$ref": "#/definitions/gorm.DeletedAt"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "fleet": {
+                    "$ref": "#/definitions/models.Fleet"
+                },
+                "id": {
+                    "type": "integer"
                 },
                 "name": {
                     "type": "string"
+                },
+                "next_index": {
+                    "type": "integer"
                 },
                 "next_start": {
                     "type": "string"
@@ -845,33 +1080,20 @@ const docTemplate = `{
                 "repeat": {
                     "type": "integer"
                 },
-                "to": {
-                    "$ref": "#/definitions/models.Star"
+                "target_num": {
+                    "type": "integer"
+                },
+                "targets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Target"
+                    }
+                },
+                "task_type": {
+                    "type": "integer"
                 },
                 "updatedAt": {
                     "type": "string"
-                }
-            }
-        },
-        "models.Star": {
-            "type": "object",
-            "properties": {
-                "galaxy": {
-                    "description": "gorm.Model // NOTE: Is this necessary?",
-                    "type": "integer"
-                },
-                "is_moon": {
-                    "type": "boolean"
-                },
-                "location": {
-                    "type": "integer"
-                },
-                "solar": {
-                    "type": "integer"
-                },
-                "star_id": {
-                    "description": "For node use enemy will be empty",
-                    "type": "integer"
                 }
             }
         },
@@ -897,7 +1119,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "password": {
-                    "description": "WARNING: USERNAME MAY BE NOT UNIQUE! RECHECK THIS!\nNOTE: Checked in db, DO api check",
+                    "description": "NOTE: Checked in db, DO api check",
                     "type": "string"
                 },
                 "role": {
@@ -932,27 +1154,30 @@ const docTemplate = `{
                 }
             }
         },
-        "models.taskLog": {
+        "task.accountTaskResponse": {
             "type": "object",
             "properties": {
-                "createdAt": {
+                "data": {
+                    "$ref": "#/definitions/models.AccountDTO"
+                },
+                "succeed": {
+                    "type": "boolean"
+                },
+                "traceID": {
                     "type": "string"
+                }
+            }
+        },
+        "task.taskResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/models.TaskDTO"
                 },
-                "deletedAt": {
-                    "$ref": "#/definitions/gorm.DeletedAt"
+                "succeed": {
+                    "type": "boolean"
                 },
-                "id": {
-                    "type": "integer"
-                },
-                "referID": {
-                    "description": "引用的 Task ID",
-                    "type": "integer"
-                },
-                "referType": {
-                    "description": "引用的 Task 类型",
-                    "type": "string"
-                },
-                "updatedAt": {
+                "traceID": {
                     "type": "string"
                 }
             }
