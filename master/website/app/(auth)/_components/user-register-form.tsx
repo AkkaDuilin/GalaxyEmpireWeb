@@ -1,4 +1,5 @@
 'use client';
+
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -7,28 +8,46 @@ import { Input } from '@/components/ui/input';
 import * as z from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
 import { useState, useEffect } from 'react';
 
-const API_BASE_URL = "/api/v1";  // 改回使用相对路径
+const API_BASE_URL = "/api/v1";
 
+// 表单验证模式
 const formSchema = z.object({
-  username: z.string().min(1, { message: 'Username is required' }),
-  password: z.string().min(6, { message: 'Password must be at least 6 characters' }),
-  captcha: z.string().min(1, { message: 'Captcha input is required' }),
+  username: z.string()
+    .min(3, { message: 'Username must be at least 3 characters' })
+    .max(20, { message: 'Username must not exceed 20 characters' }),
+  password: z.string()
+    .min(6, { message: 'Password must be at least 6 characters' }),
+  confirmPassword: z.string(),
+  captcha: z.string()
+    .min(1, { message: 'Captcha is required' })
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords do not match",
+  path: ["confirmPassword"],
 });
 
-type UserFormValue = z.infer<typeof formSchema>;
+type RegisterFormValue = z.infer<typeof formSchema>;
 
 interface CaptchaData {
   captchaId: string;
   captchaImg: string;
 }
 
-export default function UserAuthForm() {
+export default function UserRegisterForm() {
   const [captcha, setCaptcha] = useState<CaptchaData | null>(null);
   const router = useRouter();
-  
+
+  const form = useForm<RegisterFormValue>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      username: '',
+      password: '',
+      confirmPassword: '',
+      captcha: '',
+    },
+  });
+
   const getCaptcha = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/captcha`, {
@@ -42,21 +61,13 @@ export default function UserAuthForm() {
       console.log('Captcha response:', data);
       
       if (data.succeed && data.captcha_id) {
-        // 直接使用 captcha_id 构建图片 URL
         const captchaImgUrl = `${API_BASE_URL}/captcha/${data.captcha_id}`;
         
         setCaptcha({
           captchaId: data.captcha_id,
           captchaImg: captchaImgUrl
         });
-
-        console.log('Captcha state:', {
-          captchaId: data.captcha_id,
-          ccaptchaImg: captchaImgUrl
-        });
       }
-      
-     
     } catch (error) {
       console.error('Captcha error:', error);
       toast.error('Failed to load captcha');
@@ -67,24 +78,20 @@ export default function UserAuthForm() {
     getCaptcha();
   }, []);
 
-  const form = useForm<UserFormValue>({
-    resolver: zodResolver(formSchema),
-  });
-
-  const onSubmit = async (data: UserFormValue) => {
+  const onSubmit = async (data: RegisterFormValue) => {
     try {
       if (!captcha?.captchaId) {
         console.log('No captcha ID found');
         throw new Error('Captcha not loaded');
       }
 
-      console.log('Sending login request with:', {
+      console.log('Sending register request with:', {
         username: data.username,
         captchaId: captcha.captchaId,
         userInput: data.captcha
       });
 
-      const response = await fetch(`${API_BASE_URL}/login`, {
+      const response = await fetch(`${API_BASE_URL}/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -105,31 +112,27 @@ export default function UserAuthForm() {
         const errorMessage = result.error || result.message || result.msg || 'Unknown error';
         console.log('Error message:', errorMessage);
 
-        if (errorMessage.includes('record not found')) {
-          toast.error('Login failed: Username does not exist or incorrect password, please try again!');
+        if (errorMessage.includes('Duplicate entry') || 
+            errorMessage.includes('1062') || 
+            errorMessage.includes('already exists')) {
+          toast.error('Registration failed: Username already exists');
         } else if (errorMessage.includes('captcha')) {
-          toast.error('Login failed: Invalid captcha');
+          toast.error('Registration failed: Invalid captcha');
         } else {
-          toast.error(`Login failed: ${errorMessage}`);
+          toast.error('Registration failed: Please try again');
         }
         getCaptcha();
         return;
       }
 
-      if (result.token) {
-        localStorage.setItem('token', result.token);
-        localStorage.setItem('user', JSON.stringify(result.user));
-        toast.success('Login successful!');
-        router.push('/dashboard');
-      } else {
-        console.log('No token in successful response');
-        toast.error('Login failed: Invalid response format');
-        getCaptcha();
-      }
+      toast.success('Registration successful! Redirecting to login...');
+      setTimeout(() => {
+        router.push('/');
+      }, 1500);
 
     } catch (error) {
-      console.error('Login error:', error);
-      toast.error('Login failed: Please try again');
+      console.error('Registration error:', error);
+      toast.error('Registration failed: Please try again');
       getCaptcha();
     }
   };
@@ -137,7 +140,6 @@ export default function UserAuthForm() {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-        {/* Username */}
         <FormField
           control={form.control}
           name="username"
@@ -145,14 +147,13 @@ export default function UserAuthForm() {
             <FormItem>
               <FormLabel>Username</FormLabel>
               <FormControl>
-                <Input placeholder="Enter your username..." type="text" {...field} />
+                <Input placeholder="Enter your username..." {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
 
-        {/* Password */}
         <FormField
           control={form.control}
           name="password"
@@ -160,14 +161,27 @@ export default function UserAuthForm() {
             <FormItem>
               <FormLabel>Password</FormLabel>
               <FormControl>
-                <Input placeholder="Enter your password..." type="password" {...field} />
+                <Input type="password" placeholder="Enter your password..." {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
 
-        {/* Captcha */}
+        <FormField
+          control={form.control}
+          name="confirmPassword"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Confirm Password</FormLabel>
+              <FormControl>
+                <Input type="password" placeholder="Confirm your password..." {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
         <FormField
           control={form.control}
           name="captcha"
@@ -195,7 +209,7 @@ export default function UserAuthForm() {
         />
 
         <Button type="submit" className="w-full">
-          Login
+          Register
         </Button>
       </form>
     </Form>
