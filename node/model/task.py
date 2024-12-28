@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Optional
 from dataclasses import dataclass
 from dataclasses_json import dataclass_json
 from model.user import Account
@@ -11,6 +12,7 @@ class TaskType(Enum):
     EXPLORE = 4
     ESCAPE = "escape"
     LOGIN = 99
+    QUERY_PLANET = 100
 
 
 class MissionType(Enum):
@@ -34,6 +36,8 @@ class Task:
     account: Account
     fleet: Fleet
     repeat: int  # only works for explore and attack tasks
+    start_planet_id: int
+    start_planet: Target
     target: Target
 
 
@@ -45,6 +49,8 @@ class TaskResult:
     task_type: TaskType
     uuid: str
     back_ts: int = 0
+    msg: Optional[str] = ""  # json string
+    err_msg: Optional[str] = ""
 
 
 if __name__ == "__main__":

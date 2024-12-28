@@ -102,7 +102,7 @@ func (service *accountService) GetByUserId(ctx context.Context,
 		zap.Uint("userId", userId),
 		zap.String("traceID", traceID),
 	)
-	
+
 	var accounts []models.Account
 	result := service.DB.Model(&models.Account{}).Where("user_id = ?", userId).Find(&accounts)
 	err := result.Error
@@ -350,8 +350,7 @@ func (serveice *accountService) GetLoginInfo(ctx context.Context, uuid string) b
 		zap.String("traceID", traceID),
 		zap.String("uuid", uuid),
 	)
-	taskservice := taskservice.GetService()
-	return taskservice.GetLoginInfo(ctx, uuid)
+	return taskservice.GetService().GetLoginInfo(ctx, uuid)
 }
 
 // ________________________________

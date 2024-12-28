@@ -32,7 +32,44 @@ func (ts *taskService) HandleSingleResult(response *models.SingleTaskResponse) (
 			zap.String("uuid", response.UUID))
 		return nil, err
 	}
+	// Handle login task
+	if response.TaskType == models.TASKTYPE_LOGIN {
+		succeed := response.Status == models.TASK_RESULT_SUCCESS
+		if err := tx.Model(&models.TaskLog{}).
+			Where("uuid = ?", response.UUID).
+			Update("status", succeed).Error; err != nil {
+			tx.Rollback()
+			log.Error("[TaskService::HandleSingleResult] failed to update login task log",
+				zap.String("uuid", response.UUID),
+				zap.Error(err))
+			return nil, fmt.Errorf("failed to update login task log: %w", err)
+		}
+		return nil, tx.Commit().Error
+	}
+	if response.TaskType == models.TASKTYPE_QUERY_PLANET_ID {
+		// Handle query planet ID task
+		succeed := response.Status == models.TASK_RESULT_SUCCESS
+		if err := tx.Model(&models.TaskLog{}).
+			Where("uuid = ?", response.UUID).
+			Update("status", succeed).
+			Update("msg", response.Msg).
+			Update("err_msg", response.ErrMsg).Error; err != nil {
+			tx.Rollback()
+			log.Error("[TaskService::HandleSingleResult] failed to update query planet ID task log",
+				zap.String("uuid", response.UUID),
+				zap.Error(err))
+			return nil, fmt.Errorf("failed to update query planet ID task log: %w", err)
+		}
+		if err := tx.Commit().Error; err != nil {
+			tx.Rollback()
+			log.Error("[TaskService::HandleSingleResult] failed to commit transaction",
+				zap.String("uuid", response.UUID),
+				zap.Error(err))
+			return nil, fmt.Errorf("failed to commit transaction: %w", err)
+		}
+	}
 
+	// Remaining tasks Attack and Explore
 	if response.Status != models.TASK_RESULT_SUCCESS {
 		// Update task log to failed status
 		if err := tx.Model(&models.TaskLog{}).
@@ -44,13 +81,6 @@ func (ts *taskService) HandleSingleResult(response *models.SingleTaskResponse) (
 				zap.Uint("task_id", task.ID),
 				zap.Error(err))
 			return nil, err
-		}
-		if response.TaskType == models.TASKTYPE_LOGIN {
-			log.Warn("[TaskService::HandleSingleResult] login task failed, no need to update task status",
-				zap.String("uuid", response.UUID),
-				zap.Uint("task_id", task.ID),
-				zap.Int("status", response.Status))
-			return nil, nil
 		}
 
 		// 即使任务失败也要更新任务状态和下次执行时间
@@ -83,20 +113,6 @@ func (ts *taskService) HandleSingleResult(response *models.SingleTaskResponse) (
 		return &task, nil // 返回更新后的任务，而不是错误
 	}
 
-	// Handle login task
-	if response.TaskType == models.TASKTYPE_LOGIN {
-		if err := tx.Model(&models.TaskLog{}).
-			Where("uuid = ?", response.UUID).
-			Update("status", models.TASK_RESULT_SUCCESS).Error; err != nil {
-			tx.Rollback()
-			log.Error("[TaskService::HandleSingleResult] failed to update login task log",
-				zap.String("uuid", response.UUID),
-				zap.Error(err))
-			return nil, fmt.Errorf("failed to update login task log: %w", err)
-		}
-		return nil, tx.Commit().Error
-	}
-
 	// Handle other tasks
 	log.Info("[TaskService::HandleSingleResult] task succeeded",
 		zap.String("uuid", response.UUID),
@@ -107,9 +123,9 @@ func (ts *taskService) HandleSingleResult(response *models.SingleTaskResponse) (
 	task.Status = models.TaskStatusMap[models.TASK_STATUS_READY]
 	task.NextStart = response.BackTimestamp + config.TASK_DELAY
 
-	if err := tx.Model(&task).Select("status", "next_start").Updates(models.Task{
-		Status:    models.TaskStatusMap[models.TASK_STATUS_READY],
-		NextStart: response.BackTimestamp + config.TASK_DELAY,
+	if err := tx.Model(&task).Updates(map[string]interface{}{
+		"status":     models.TaskStatusMap[models.TASK_STATUS_READY],
+		"next_start": response.BackTimestamp + config.TASK_DELAY,
 	}).Error; err != nil {
 		tx.Rollback()
 		log.Error("[TaskService::HandleSingleResult] failed to update task",

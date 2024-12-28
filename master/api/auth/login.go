@@ -12,7 +12,7 @@ import (
 )
 
 type authResponse struct {
-	Token string      `json:"token"`
+	Token string         `json:"token"`
 	User  models.UserDTO `json:"user"`
 }
 
@@ -57,7 +57,7 @@ func LoginHandler(c *gin.Context) {
 		})
 		return
 	}
-	if user.ID==0{
+	if user.ID == 0 {
 		c.JSON(http.StatusUnauthorized, api.ErrorResponse{
 			Succeed: false,
 			Error:   "User not found",
@@ -76,7 +76,7 @@ func LoginHandler(c *gin.Context) {
 		})
 		return
 	}
-	userDTO:=user.ToDTO()
+	userDTO := user.ToDTO()
 	c.JSON(http.StatusOK, authResponse{
 		Token: token,
 		User:  *userDTO,

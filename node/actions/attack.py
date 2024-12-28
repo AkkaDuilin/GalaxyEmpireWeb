@@ -25,13 +25,25 @@ def attack_action(task: Task, result_queue: Queue):
         else:
             logger.info(f"Processing attack task {task.task_id}")
             galaxy = Galaxy(task.account, result_queue=result_queue)
-            response = galaxy.handle_attack_task(task)
+            login_response = galaxy.login()
+            if login_response.status != 0:
+                logger.warning(f"Login failed: {login_response.err_msg}")
+                task_status = TaskStatus.FAILED
+                raise Exception("Login failed")
+            change_planet_response = galaxy.change_planet(task.start_planet_id)
+            if change_planet_response.status != 0:
+                logger.warning(f"Change planet failed: {change_planet_response.err_msg}")
+                task_status = TaskStatus.FAILED
+                raise Exception("Change planet failed")
+            else:
+                logger.info(f"Change planet {task.start_planet_id} completed successfully")
+            attack_response = galaxy.handle_attack_task(task)
 
-            if response.status != 0:
-                logger.warning(f"Attack task failed: {response.err_msg}")
+            if attack_response.status != 0:
+                logger.warning(f"Attack task failed: {attack_response.err_msg}")
                 task_status = TaskStatus.FAILED
             else:
-                back_ts = response.data.get('total_finish_ts', -1)
+                back_ts = attack_response.data.get('total_finish_ts', -1)
                 if back_ts == -1:
                     logger.warning("Invalid back_ts in response")
                     task_status = TaskStatus.FAILED
@@ -71,8 +83,20 @@ def explore_action(task: Task, result_queue: Queue):
         else:
             logger.info(f"Processing explore task {task.task_id}")
             galaxy = Galaxy(task.account, result_queue)
-            response = galaxy.handle_explore_task(task)
+            login_response = galaxy.login()
+            if login_response.status != 0:
+                logger.warning(f"Login failed: {login_response.err_msg}")
+                task_status = TaskStatus.FAILED
+                raise Exception("Login failed")
+            change_planet_response = galaxy.change_planet(task.start_planet_id)
+            if change_planet_response.status != 0:
+                logger.warning(f"Change planet failed: {change_planet_response.err_msg}")
+                task_status = TaskStatus.FAILED
+                raise Exception("Change planet failed")
+            else:
+                logger.info(f"Change planet {task.start_planet_id} completed successfully")
 
+            response = galaxy.handle_explore_task(task)
             if response.status != 0:
                 logger.warning(f"Explore task failed: {response.err_msg}")
                 task_status = TaskStatus.FAILED

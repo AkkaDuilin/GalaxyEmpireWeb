@@ -42,6 +42,7 @@ class Network:
         self.max_login_retries = 3  # Maximum retry attempts
         self.login_retry_count = 0   # Current retry count
         self.proxy = None
+        self.planet_id_table = {}
 
         if os.getenv('PROXY', False):
             self.set_proxy()
@@ -181,29 +182,58 @@ class Network:
         """
         return {"sess_id": self.ssid, "ppy_id": self.ppy_id}
 
-    def changePlanet(self, planetId: int) -> NetworkResponse:
+    def change_planet(self, planetId: int = 0, max_retries: int = 3, initial_delay: float = 5) -> NetworkResponse:
         """
-        Change the active planet.
+        Change the active planet with exponential backoff retry mechanism.
 
         Args:
             planetId (int): The ID of the planet to switch to.
+            max_retries (int): Maximum number of retry attempts.
+            initial_delay (float): Initial delay in seconds before first retry.
 
         Returns:
             NetworkResponse: The response wrapped in NetworkResponse.
         """
-        url = 'game.php?page=buildings&mode='
-        args = {"cp": planetId}
-        logger.info(f"Changing planet to ID: {planetId}")
+        url = 'game.php?page=buildings'
+        args = {}
+        logging.info("Updating planet ID table...")
+        if planetId:
+            logger.info("Changing planet to ID: %s", planetId)
+            args["cp"] = planetId
 
-        result = self._post(url, args)
-        if result.status == 0:
-            data = result.data.get('data')
-            if data:
-                logger.info("Planet changed successfully.")
-                return NetworkResponse(status=0, data=data)
-        logger.error("Failed to change planet. Retrying after 15 seconds.")
-        time.sleep(15)
-        return self.changePlanet(planetId)
+        for attempt in range(max_retries + 1):
+            logger.info(f"Changing planet to ID: {planetId} (Attempt {attempt + 1}/{max_retries + 1})")
+
+            result = self._post(url, args)
+            if result.status == 0:
+                data = result.data.get('result')
+                if data:
+                    logger.info("Planet changed successfully.")
+                    self.update_planet_id_table(data)
+                    return NetworkResponse(status=0, data=data)
+            logger.error(f"Failed to change planet: {result.err_msg}")
+
+            if attempt < max_retries:
+                delay = initial_delay * (2 ** attempt)  # Exponential backoff
+                logger.warning(f"Failed to change planet. Retrying in {delay} seconds...")
+                time.sleep(delay)
+
+        logger.error(f"Failed to change planet after {max_retries + 1} attempts.")
+        return NetworkResponse(status=-1, data={}, err_msg=f"Failed to change planet after {max_retries + 1} attempts")
+
+    def update_planet_id_table(self, full_data: dict):
+        logger.debug("Updating planet ID table...")
+
+        planets_data = full_data.get("buildInfo", {}).get("result", {}).get("Planets", {})
+        planet_id_table = {}
+        for planet_id, planet_data in planets_data.items():
+            position = ":".join([str(planet_data["galaxy"]),
+                                 str(planet_data["system"]),
+                                 str(planet_data["planet"]),
+                                 str(int(int(planet_data["planet_type"]) == 3))])
+            planet_id_table[position] = planet_id
+            planet_id_table[planet_id] = position
+        self.planet_id_table = planet_id_table
 
     def __del__(self):
         self.session.close()
@@ -219,7 +249,7 @@ class Network:
 
 if __name__ == "__main__":
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
         handlers=[
             logging.StreamHandler(sys.stdout),

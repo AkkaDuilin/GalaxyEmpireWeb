@@ -1,3 +1,4 @@
+from typing import Optional
 from dataclasses import dataclass
 from dataclasses_json import dataclass_json
 
@@ -11,7 +12,7 @@ class Target:
     galaxy: int
     system: int
     planet: int
-    is_moon = False
+    is_moon: Optional[bool] = False
 
     def to_dict(self):
         """
@@ -23,3 +24,7 @@ class Target:
             "system": self.system,
             "planet": self.planet,
         }
+
+    def to_position(self):
+        is_moon_int = int(self.is_moon if self.is_moon is not None else False)
+        return f"{self.galaxy}:{self.system}:{self.planet}:{int(is_moon_int)}"

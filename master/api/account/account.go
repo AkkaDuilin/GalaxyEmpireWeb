@@ -93,7 +93,7 @@ func GetAccountByUserID(c *gin.Context) {
 	log.Info("[api]Get Account by User ID",
 		zap.String("id", idStr),
 		zap.String("traceID", traceID),
-		)
+	)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Succeed: false,
@@ -113,7 +113,7 @@ func GetAccountByUserID(c *gin.Context) {
 				zap.Uint("UserID", uint(id)),
 				zap.Uint("ctxUserID", ctxUserID),
 			)
-				
+
 			c.JSON(http.StatusForbidden, api.ErrorResponse{
 				Succeed: false,
 				Error:   "Forbidden",
