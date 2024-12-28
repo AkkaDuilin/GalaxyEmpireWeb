@@ -9,6 +9,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { useState, useEffect } from 'react';
+import { useUser } from '@/components/providers/user-provider';
 
 const API_BASE_URL = "/api/v1";  // 改回使用相对路径
 
@@ -28,6 +29,7 @@ interface CaptchaData {
 export default function UserAuthForm() {
   const [captcha, setCaptcha] = useState<CaptchaData | null>(null);
   const router = useRouter();
+  const { setUser } = useUser();
   
   const getCaptcha = async () => {
     try {
@@ -119,8 +121,17 @@ export default function UserAuthForm() {
       if (result.token) {
         localStorage.setItem('token', result.token);
         localStorage.setItem('user', JSON.stringify(result.user));
+        const userData = {
+          username: data.username,  // 使用表单中的用户名
+          email: result.data?.email || '',
+          image: result.data?.avatar || '',
+          role: result.data?.role || 'user',
+          id: result.data?.id || ''
+        };
+        setUser(userData);
+        console.log('User data set:', userData);
         toast.success('Login successful!');
-        router.push('/dashboard');
+        router.push('/dashboard/accounts');
       } else {
         console.log('No token in successful response');
         toast.error('Login failed: Invalid response format');
