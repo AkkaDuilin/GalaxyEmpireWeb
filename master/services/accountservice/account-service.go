@@ -51,22 +51,17 @@ func InitService(db *gorm.DB, enforcer casbinservice.Enforcer) error {
 	log.Info("[service] Account service Initialized")
 	return nil
 }
-func GetService(ctx context.Context) (*accountService, error) {
-	traceID := utils.TraceIDFromContext(ctx)
+func GetService(ctx context.Context) *accountService {
 	if accountServiceInstance == nil {
-		log.DPanic("[service]AccountService is not initialized",
-			zap.String("traceID", traceID),
-		)
-		return nil, errors.New("AccountService is not initialized")
+		log.Fatal("[service] Account service is not initialized")
 	}
-	return accountServiceInstance, nil
+	return accountServiceInstance
 }
 
-func (service *accountService) GetById(ctx context.Context, id uint, fields []string) (*models.Account, *utils.ServiceError) {
+func (service *accountService) GetById(ctx context.Context, id uint) (*models.Account, *utils.ServiceError) {
 	traceID := utils.TraceIDFromContext(ctx)
 	log.Info("[service]Get Account By ID",
 		zap.Uint("id", id),
-		zap.Strings("fields", fields),
 		zap.String("traceID", traceID),
 	)
 
@@ -86,9 +81,6 @@ func (service *accountService) GetById(ctx context.Context, id uint, fields []st
 	}
 	var account models.Account
 	cur := service.DB
-	for _, field := range fields {
-		cur.Preload(field)
-	}
 	err := cur.Where("id = ?", id).First(&account).Error
 	if err != nil {
 		log.Error("[service]Get Account By ID failed",
@@ -104,13 +96,13 @@ func (service *accountService) GetById(ctx context.Context, id uint, fields []st
 }
 
 func (service *accountService) GetByUserId(ctx context.Context,
-	userId uint, fields []string) (*[]models.Account, *utils.ServiceError) {
+	userId uint) (*[]models.Account, *utils.ServiceError) {
 	traceID := utils.TraceIDFromContext(ctx)
 	log.Info("[service]Get Account By User ID",
 		zap.Uint("userId", userId),
-		zap.Strings("fields", fields),
 		zap.String("traceID", traceID),
 	)
+	
 	var accounts []models.Account
 	result := service.DB.Model(&models.Account{}).Where("user_id = ?", userId).Find(&accounts)
 	err := result.Error
@@ -163,7 +155,16 @@ func (service *accountService) Create(ctx context.Context, account *models.Accou
 		}
 	}()
 
-	account.UserID = userID
+	if account.UserID != 0 && account.UserID != userID {
+		log.Warn("[service]Create Account - User ID not match",
+			zap.String("traceID", traceID),
+			zap.Uint("userID", userID),
+			zap.Uint("accountUserID", account.UserID),
+		)
+		return utils.NewServiceError(http.StatusUnauthorized, "User ID not match", nil)
+	}
+	account.UserID = userID // If not set, set to current user
+
 	account.ExpireAt = time.Now()
 	if err := tx.Create(account).Error; err != nil {
 		tx.Rollback()
@@ -290,11 +291,17 @@ func (service *accountService) Delete(ctx context.Context, ID uint) *utils.Servi
 
 	allowed, serviceErr := service.isUserAllowed(ctx, ID, casbinservice.WRITE)
 	if serviceErr != nil {
+		log.Error("[service]Delete Account Info - Check Permission failed",
+			zap.String("traceID", traceID),
+			zap.Error(serviceErr),
+		)
 		return serviceErr
 	}
 	if !allowed {
 		log.Info("[service]Delete Account Info - Not allowed",
 			zap.String("traceID", traceID),
+			zap.Uint("accountID", ID),
+			zap.Uint("userID", utils.UserIDFromContext(ctx)),
 		)
 		return utils.NewServiceError(http.StatusUnauthorized, "User has no Permission", nil)
 	}
@@ -303,6 +310,8 @@ func (service *accountService) Delete(ctx context.Context, ID uint) *utils.Servi
 	if result.Error != nil {
 		log.Info("[service]Delete Account failed",
 			zap.String("traceID", traceID),
+			zap.Error(result.Error),
+			zap.Uint("accountID", ID),
 		)
 		return utils.NewServiceError(http.StatusInternalServerError, "Failed to delete user", result.Error)
 	}

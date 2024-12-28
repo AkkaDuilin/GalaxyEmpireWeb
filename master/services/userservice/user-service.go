@@ -68,6 +68,7 @@ func (service *userService) Create(ctx context.Context, user *models.User) *util
 		zap.String("traceID", traceID),
 		zap.String("username", user.Username),
 	)
+	user.Role = 0 // Default role
 
 	// Start transaction
 	tx := service.DB.Begin()
