@@ -8,13 +8,13 @@ DELAY_EXCHANGE = os.environ.get('DELAY_EXCHANGE', 'delayed_exchange')
 PROXY_BASE_URL = os.environ.get('PROXY_ENDPOINT', 'http://localhost:5010')
 PROXY_AUTH_USER = os.environ.get('PROXY_AUTH_USER', 'user')
 PROXY_AUTH_PASS = os.environ.get('PROXY_AUTH_PASS', 'password')
-if os.getenv('PROXY', False):
+if os.getenv('PROXY', ""):
     print("************ PROXY ENABLED ************")
 
 port = os.environ.get('RABBITMQ_PORT', "5672")
 try:
     RABBITMQ_PORT = int(port)
-except:
+except ValueError:
     RABBITMQ_PORT = 5672
 
 serverUrlList = {  # TODO: Get Server URL from the server

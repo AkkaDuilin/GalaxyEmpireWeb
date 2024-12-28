@@ -1,12 +1,12 @@
-from dataclasses import dataclass
+import os
+import sys
+import time
 import logging
 import requests
-from utils import crypto, md5
-import time
-import sys
-import os
+from dataclasses import dataclass
 from model.user import Account
 from config import serverUrlList, PROXY_BASE_URL, PROXY_AUTH_USER, PROXY_AUTH_PASS
+from utils import crypto, md5
 
 # Configure logging
 logger = logging.getLogger(__name__)

@@ -1,5 +1,5 @@
-from dataclasses_json import dataclass_json
 from dataclasses import dataclass
+from dataclasses_json import dataclass_json
 from config import ShipToID
 
 

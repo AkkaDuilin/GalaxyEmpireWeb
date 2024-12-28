@@ -1,9 +1,9 @@
-from dataclasses_json import dataclass_json
+from enum import Enum
 from dataclasses import dataclass
+from dataclasses_json import dataclass_json
 from model.user import Account
 from model.fleet import Fleet
 from model.target import Target
-from enum import Enum
 
 
 class TaskType(Enum):

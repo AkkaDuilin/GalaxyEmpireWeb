@@ -1,7 +1,6 @@
 import logging
 import signal
 import sys
-import threading
 import time
 from queue import Queue, Empty
 from threading import Thread, Event
@@ -12,7 +11,7 @@ from rabbitmq import RabbitMQPublisher, RabbitMQConsumer
 from task_process import TaskProcessor
 from config import (
     RABBITMQ_HOST, RABBITMQ_PORT, RABBITMQ_USER, RABBITMQ_PASS,
-    TASK_QUEUE, RESULT_QUEUE, DELAY_EXCHANGE
+    TASK_QUEUE, RESULT_QUEUE
 )
 
 logging.basicConfig(
@@ -63,8 +62,6 @@ class Worker:
                         if success:
                             logger.info(f"Published result for task {result.task_id}")
                             break
-                        else:
-                            raise Exception("Publish returned False")
                     except Exception as e:
                         retry_count += 1
                         logger.error(f"Publish error: {e}, retry {retry_count}/{max_retries}")
@@ -72,7 +69,9 @@ class Worker:
                         backoff *= 2  # Exponential backoff
 
                 if retry_count >= max_retries:
-                    logger.error(f"Failed to publish task {result.task_id} after {max_retries} retries")
+                    logger.error("Failed to publish task %d after %d retries",
+                                 result.task_id,
+                                 max_retries)
                     # Optionally, push to a dead-letter queue or handle accordingly
 
             except Empty:

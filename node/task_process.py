@@ -50,7 +50,9 @@ class TaskProcessor:
             task_id = task_dict.get('task_id', 0)
             task_type_value = task_dict.get('task_type', TaskType.LOGIN.name)
             try:
-                task_type = TaskType(task_type_value) if isinstance(task_type_value, str) else TaskType(task_type_value)
+                task_type = TaskType(task_type_value) if \
+                    isinstance(task_type_value, str) else \
+                    TaskType(task_type_value)
             except ValueError:
                 task_type = TaskType.LOGIN  # Default or handle appropriately
             uuid = task_dict.get('uuid', '')

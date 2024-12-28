@@ -4,8 +4,6 @@ from queue import Queue
 from network import Network, NetworkResponse
 from model.user import Account
 from model.task import Task, TaskType, MissionType
-from model.fleet import Fleet
-from model.target import Target
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +25,7 @@ class Galaxy(Network):
         Returns:
             NetworkResponse: Contains arguments and token if successful.
         """
-        PREPARE_FLEET_END_POINT = "game.php?page=my_fleet1"
+        PREPARE_FLEET_ENDPOINT = "game.php?page=my_fleet1"
         args = {}
         mission_mapping = {
             TaskType.ATTACK: MissionType.ATTACK,
@@ -53,7 +51,7 @@ class Galaxy(Network):
         args.update(fleet_data)
 
         logger.info(f"Preparing fleet for task: {task}")
-        response = self._post(PREPARE_FLEET_END_POINT, args)
+        response = self._post(PREPARE_FLEET_ENDPOINT, args)
 
         if response.status == 0:
             token = response.data.get('result', {}).get('token')
