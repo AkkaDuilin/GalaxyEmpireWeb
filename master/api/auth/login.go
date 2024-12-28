@@ -13,7 +13,7 @@ import (
 
 type authResponse struct {
 	Token string      `json:"token"`
-	User  models.User `json:"user"`
+	User  models.UserDTO `json:"user"`
 }
 
 // @Summary User Login
@@ -76,8 +76,9 @@ func LoginHandler(c *gin.Context) {
 		})
 		return
 	}
+	userDTO:=user.ToDTO()
 	c.JSON(http.StatusOK, authResponse{
 		Token: token,
-		User:  *user,
+		User:  *userDTO,
 	})
 }
