@@ -1,3 +1,4 @@
+import os
 import logging
 import signal
 import sys
@@ -179,4 +180,5 @@ def run_forever():
 
 
 if __name__ == '__main__':
+    logger.info(os.environ)
     run_forever()

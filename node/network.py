@@ -5,7 +5,7 @@ import logging
 import requests
 from dataclasses import dataclass
 from model.user import Account
-from config import serverUrlList, PROXY_BASE_URL, PROXY_AUTH_USER, PROXY_AUTH_PASS
+from config import serverUrlList, PROXY_BASE_URL, PROXY_AUTH_PASS, PROXY_AUTH_USER
 from utils import crypto, md5
 
 # Configure logging
@@ -55,7 +55,9 @@ class Network:
         proxy_url = f"{PROXY_BASE_URL}{HTTP_ENDPOINT}"
         logger.info("Attempting to set proxy...")
         try:
-            response = self.session.get(proxy_url, auth=(PROXY_AUTH_USER, PROXY_AUTH_PASS), timeout=5)
+            response = self.session.get(proxy_url,
+                                        auth=(PROXY_AUTH_USER, PROXY_AUTH_PASS),
+                                        timeout=5)
             response.raise_for_status()
             proxy = response.json()
 
@@ -224,7 +226,3 @@ if __name__ == "__main__":
             logging.FileHandler("network.log")
         ]
     )
-    user = Account("saltfish", "A123456", "", "g26")
-    network = Network(user)
-    print(network.login())
-    print(network.ppy_id, network.ssid)
