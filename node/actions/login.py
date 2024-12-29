@@ -16,10 +16,10 @@ def login_action(task: Task, result_queue: Queue):
     """
     try:
         if task.task_type != TaskType.LOGIN:
-            logger.error(f"Invalid task type for login_action: {task.task_type}")
+            logger.error("Invalid task type for login_action: %s", task.task_type)
             status = TaskStatus.FAILED
         else:
-            logger.info(f"Processing login task for user: {task.account.username}")
+            logger.info("Processing login task for user: %s", task.account.username)
             network = Network(task.account)
             response = network.login()
 
@@ -31,7 +31,7 @@ def login_action(task: Task, result_queue: Queue):
                 logger.warning(f"Login failed: {response.err_msg}")
 
     except Exception as e:
-        logger.error(f"Error during login: {str(e)}", exc_info=True)
+        logger.error("Error during login: %s", e, exc_info=True)
         status = TaskStatus.FAILED
     finally:
         result = TaskResult(
@@ -41,4 +41,4 @@ def login_action(task: Task, result_queue: Queue):
             uuid=task.uuid
         )
         result_queue.put(result)
-        logger.debug(f"Login result queued: {result}")
+        logger.debug("Login result queued: %s", result)

@@ -64,6 +64,7 @@ func RegisterRoutes() *gin.Engine {
 		t.DELETE("", task.DeleteTask)
 		t.PUT("", task.UpdateTask)
 	}
+	task.RegisterPlanetRoutes(t)
 
 	return r
 }

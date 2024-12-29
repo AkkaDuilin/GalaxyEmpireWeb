@@ -60,7 +60,7 @@ class TestAccount:
                 for account in res_json['data']['accounts']:
                     assert 'id' in account and account['id'] is not None, "账户应包含有效的ID"
         elif caseType == "User Does Not Exist":
-            assert response.status_code == 404, "不存在的用户ID应返回404"
+            assert response.status_code == 403, "无权限访问的用户ID应返回403"
         else:
             assert response.status_code == 400, "无效的用户ID应返回400"
 

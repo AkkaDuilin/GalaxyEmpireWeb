@@ -3,8 +3,8 @@ from queue import Queue, Empty
 from concurrent.futures import ThreadPoolExecutor
 from model.task import Task, TaskType, TaskResult, TaskStatus
 from actions.login import login_action
-from actions.attack import attack_action
-from actions.attack import explore_action
+from actions.attack import attack_action, explore_action
+from actions.query_planet import query_planet_action
 
 
 class TaskProcessor:
@@ -24,7 +24,8 @@ class TaskProcessor:
             action_map = {
                 TaskType.LOGIN: login_action,
                 TaskType.ATTACK: attack_action,
-                TaskType.EXPLORE: explore_action
+                TaskType.EXPLORE: explore_action,
+                TaskType.QUERY_PLANET: query_planet_action
             }
 
             action = action_map.get(task.task_type)
@@ -50,7 +51,9 @@ class TaskProcessor:
             task_id = task_dict.get('task_id', 0)
             task_type_value = task_dict.get('task_type', TaskType.LOGIN.name)
             try:
-                task_type = TaskType(task_type_value) if isinstance(task_type_value, str) else TaskType(task_type_value)
+                task_type = TaskType(task_type_value) if \
+                    isinstance(task_type_value, str) else \
+                    TaskType(task_type_value)
             except ValueError:
                 task_type = TaskType.LOGIN  # Default or handle appropriately
             uuid = task_dict.get('uuid', '')

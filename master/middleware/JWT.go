@@ -33,7 +33,7 @@ func JWTAuthMiddleware() gin.HandlerFunc {
 		c.Set("claims", claims)
 		c.Set("role", role)
 		c.Set("userID", claims.UserID)
-		log.Info("[middleware]JWTAuthMiddleware", zap.String("traceID", c.GetString("traceID")), zap.Int("role", role))
+		log.Info("[middleware]JWTAuthMiddleware", zap.String("traceID", c.GetString("traceID")), zap.Int("role", role), zap.Uint("UserID", claims.UserID))
 		c.Next()
 
 	}
