@@ -5,7 +5,6 @@ import (
 	"GalaxyEmpireWeb/queue"
 	"GalaxyEmpireWeb/repositories/mysql"
 	"GalaxyEmpireWeb/repositories/redis"
-	"GalaxyEmpireWeb/repositories/sqlite"
 	"GalaxyEmpireWeb/routes"
 	"GalaxyEmpireWeb/services/accountservice"
 	"GalaxyEmpireWeb/services/captchaservice"
@@ -13,7 +12,6 @@ import (
 	"GalaxyEmpireWeb/services/taskservice"
 	"GalaxyEmpireWeb/services/userservice"
 	"fmt"
-	"os"
 
 	r "github.com/redis/go-redis/v9"
 
@@ -40,11 +38,7 @@ func main() {
 	rdb = redis.GetRedisDB()
 	mq = queue.GetRabbitMQ()
 
-	if os.Getenv("env") == "test" {
-		db = sqlite.GetTestDB()
-	} else {
-		db = mysql.GetDB()
-	}
+	db = mysql.GetDB()
 
 	models.AutoMigrate(db)
 	servicesInit(db, rdb, mq)
