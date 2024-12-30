@@ -13,11 +13,12 @@ import (
 
 // Enum TaskType
 const (
-	TASKTYPE_ATTACK     = 1
-	TASKTYPE_EXPLORE    = 4
-	TASKTYPE_LOGIN      = 99
-	MISSIONTYPE_ATTACK  = 1
-	MISSIONTYPE_EXPLORE = 15
+	TASKTYPE_ATTACK          = 1
+	TASKTYPE_EXPLORE         = 4
+	TASKTYPE_LOGIN           = 99
+	TASKTYPE_QUERY_PLANET_ID = 100
+	MISSIONTYPE_ATTACK       = 1
+	MISSIONTYPE_EXPLORE      = 15
 )
 
 const (
@@ -35,24 +36,26 @@ var TaskStatusMap = map[int]string{
 } // TODO: need to rethink the status
 
 const (
-	TASK_RESULT_RUNNING = 0
+	TASK_RESULT_RUNNING = 0 // TODO: use var to def type
 	TASK_RESULT_SUCCESS = 1
 	TASK_RESULT_FAILED  = 2
 )
 
 type Task struct {
 	gorm.Model
-	Name      string   `json:"name"`
-	NextStart int64    `json:"next_start"` // Unix timestamp seconds
-	Enabled   bool     `json:"enabled"`
-	AccountID uint     `json:"account_id"`
-	TaskType  int      `json:"task_type"`
-	Status    string   `json:"status"`
-	Targets   []Target `json:"targets" gorm:"foreignKey:TaskID"`
-	Repeat    int      `json:"repeat"`
-	NextIndex int      `json:"next_index"`
-	TargetNum int      `json:"target_num"`
-	Fleet     Fleet    `json:"fleet" gorm:"foreignKey:TaskID"`
+	Name          string   `json:"name"`
+	NextStart     int64    `json:"next_start"` // Unix timestamp seconds
+	Enabled       bool     `json:"enabled"`
+	AccountID     uint     `json:"account_id"`
+	TaskType      int      `json:"task_type"`
+	Status        string   `json:"status"`
+	StartPlanet   Target   `json:"start_planet" gorm:"foreignKey:TaskID"`
+	StartPlanetID uint     `json:"start_planet_id"`
+	Targets       []Target `json:"targets" gorm:"foreignKey:TaskID"`
+	Repeat        int      `json:"repeat"`
+	NextIndex     int      `json:"next_index"`
+	TargetNum     int      `json:"target_num"`
+	Fleet         Fleet    `json:"fleet" gorm:"foreignKey:TaskID"`
 }
 
 func (t Task) ToDTO() *TaskDTO {
@@ -111,16 +114,18 @@ func (t *Task) ToSingleTaskRequest(account *Account) (*SingleTaskRequest, error)
 		zap.Int("targets_count", len(t.Targets)))
 
 	return &SingleTaskRequest{
-		TaskID:    t.ID,
-		UUID:      uuid.NewString(),
-		Name:      t.Name,
-		NextStart: t.NextStart,
-		Enabled:   t.Enabled,
-		Account:   *account.ToInfo(),
-		TaskType:  t.TaskType,
-		Target:    t.Targets[currentIndex], // 使用当前索引
-		Repeat:    t.Repeat,
-		Fleet:     t.Fleet.ToDTO(),
+		TaskID:        t.ID,
+		UUID:          uuid.NewString(),
+		Name:          t.Name,
+		NextStart:     t.NextStart,
+		Enabled:       t.Enabled,
+		Account:       *account.ToInfo(),
+		TaskType:      t.TaskType,
+		StartPlanet:   t.StartPlanet,
+		StartPlanetID: t.StartPlanetID,
+		Target:        t.Targets[currentIndex], // 使用当前索引
+		Repeat:        t.Repeat,
+		Fleet:         t.Fleet.ToDTO(),
 	}, nil
 }
 
@@ -139,16 +144,18 @@ type TaskDTO struct { // TODO: finish func
 }
 
 type SingleTaskRequest struct {
-	TaskID    uint        `json:"task_id"`
-	UUID      string      `json:"uuid"`
-	Name      string      `json:"name"`
-	NextStart int64       `json:"next_start"` // Unix timestamp seconds
-	Enabled   bool        `json:"enabled"`
-	Account   AccountInfo `json:"account"`
-	TaskType  int         `json:"task_type"`
-	Target    Target      `json:"target"`
-	Repeat    int         `json:"repeat"`
-	Fleet     *FleetDTO   `json:"fleet"`
+	TaskID        uint        `json:"task_id"`
+	UUID          string      `json:"uuid"`
+	Name          string      `json:"name"`
+	NextStart     int64       `json:"next_start"` // Unix timestamp seconds
+	Enabled       bool        `json:"enabled"`
+	Account       AccountInfo `json:"account"`
+	TaskType      int         `json:"task_type"`
+	StartPlanet   Target      `json:"start_planet"`
+	StartPlanetID uint        `json:"start_planet_id"`
+	Target        Target      `json:"target"`
+	Repeat        int         `json:"repeat"`
+	Fleet         *FleetDTO   `json:"fleet"`
 }
 type SingleTaskResponse struct {
 	TaskID        uint   `json:"task_id"`
@@ -156,7 +163,8 @@ type SingleTaskResponse struct {
 	Status        int    `json:"status"` // 0 success, -1 failed
 	TaskType      int    `json:"task_type"`
 	BackTimestamp int64  `json:"back_ts"`
-	Message       string `json:"message"`
+	Msg           string `json:"msg"`
+	ErrMsg        string `json:"err_msg"`
 }
 
 type TaskResponse struct {

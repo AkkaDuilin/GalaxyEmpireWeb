@@ -55,17 +55,8 @@ func GetAccountByID(c *gin.Context) {
 		})
 		return
 	}
-	accountService, err := accountservice.GetService(c)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-			Succeed: false,
-			Error:   err.Error(),
-			Message: "Account service not initialized",
-			TraceID: traceID,
-		})
-	}
 
-	account, serviceErr := accountService.GetById(c, uint(id), []string{})
+	account, serviceErr := accountservice.GetService(c).GetById(c, uint(id))
 	if serviceErr != nil {
 		c.JSON(serviceErr.StatusCode(), api.ErrorResponse{
 			Succeed: false,
@@ -99,6 +90,10 @@ func GetAccountByUserID(c *gin.Context) {
 	traceID := c.GetString("traceID")
 	idStr := c.Param("userid")
 	id, err := strconv.Atoi(idStr)
+	log.Info("[api]Get Account by User ID",
+		zap.String("id", idStr),
+		zap.String("traceID", traceID),
+	)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Succeed: false,
@@ -110,9 +105,15 @@ func GetAccountByUserID(c *gin.Context) {
 	}
 
 	role := c.Value("role").(int)
-	ctxUserID := c.Value("userID").(uint)
+	ctxUserID := utils.UserIDFromContext(c)
 	if role == 0 {
 		if uint(id) != ctxUserID {
+			log.Error("[api]Get Account by User ID failed - Forbidden",
+				zap.String("traceID", traceID),
+				zap.Uint("UserID", uint(id)),
+				zap.Uint("ctxUserID", ctxUserID),
+			)
+
 			c.JSON(http.StatusForbidden, api.ErrorResponse{
 				Succeed: false,
 				Error:   "Forbidden",
@@ -123,8 +124,8 @@ func GetAccountByUserID(c *gin.Context) {
 		}
 	}
 
-	accountService, _ := accountservice.GetService(c)
-	account, serviceErr := accountService.GetByUserId(c, uint(id), []string{})
+	account, serviceErr := accountservice.GetService(c).GetByUserId(c, uint(id))
+
 	if serviceErr != nil {
 		c.JSON(serviceErr.StatusCode(), api.ErrorResponse{
 			Succeed: false,
@@ -194,8 +195,7 @@ func CreateAccount(c *gin.Context) {
 		return
 	}
 
-	accountService, _ := accountservice.GetService(c)
-	serviceErr := accountService.Create(c, &account)
+	serviceErr := accountservice.GetService(c).Create(c, &account)
 	if serviceErr != nil {
 		log.Error("[api]Create Account failed",
 			zap.String("traceID", traceID),
@@ -246,8 +246,7 @@ func DeleteAccount(c *gin.Context) {
 			TraceID: traceID,
 		})
 	}
-	accountService, _ := accountservice.GetService(c)
-	serviceErr := accountService.Delete(c, account.ID)
+	serviceErr := accountservice.GetService(c).Delete(c, account.ID)
 	if serviceErr != nil {
 		log.Error("[api]Delete Account failed",
 			zap.String("traceID", traceID),
@@ -304,8 +303,7 @@ func CheckAccountAvailable(c *gin.Context) {
 		})
 		return
 	}
-	accountService, _ := accountservice.GetService(c)
-	uuid, serviceErr := accountService.RequestCheckingAccountLogin(c, &account)
+	uuid, serviceErr := accountservice.GetService(c).RequestCheckingAccountLogin(c, &account)
 	if serviceErr != nil {
 		log.Error("[api]Check Account Available failed",
 			zap.String("traceID", traceID),
@@ -340,8 +338,7 @@ func CheckAccountAvailable(c *gin.Context) {
 func CheckAccountByUUID(c *gin.Context) {
 	traceID := utils.TraceIDFromContext(c)
 	uuid := c.Param("uuid")
-	accountService, _ := accountservice.GetService(c)
-	result := accountService.GetLoginInfo(c, uuid)
+	result := accountservice.GetService(c).GetLoginInfo(c, uuid)
 	c.JSON(http.StatusOK, accountCheckingResponse{
 		Succeed: result,
 		TraceID: traceID,

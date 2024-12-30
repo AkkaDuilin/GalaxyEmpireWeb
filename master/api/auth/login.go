@@ -12,7 +12,8 @@ import (
 )
 
 type authResponse struct {
-	Token string `json:"token"`
+	Token string         `json:"token"`
+	User  models.UserDTO `json:"user"`
 }
 
 // @Summary User Login
@@ -56,6 +57,15 @@ func LoginHandler(c *gin.Context) {
 		})
 		return
 	}
+	if user.ID == 0 {
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{
+			Succeed: false,
+			Error:   "User not found",
+			Message: "User not found",
+			TraceID: utils.TraceIDFromContext(c),
+		})
+		return
+	}
 	token, err3 := jwtservice.GenerateToken(user.ID)
 	if err3 != nil {
 		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
@@ -66,7 +76,9 @@ func LoginHandler(c *gin.Context) {
 		})
 		return
 	}
+	userDTO := user.ToDTO()
 	c.JSON(http.StatusOK, authResponse{
 		Token: token,
+		User:  *userDTO,
 	})
 }

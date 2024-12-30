@@ -1,6 +1,10 @@
 package models
 
-import "gorm.io/gorm"
+import (
+	"fmt"
+
+	"gorm.io/gorm"
+)
 
 type Target struct {
 	gorm.Model
@@ -9,4 +13,12 @@ type Target struct {
 	Planet  int  `json:"planet"`
 	Is_moon bool `json:"is_moon"`
 	TaskID  uint `json:"task_id"`
+}
+
+func (t Target) String() string {
+	is_moon_int := 0
+	if t.Is_moon {
+		is_moon_int = 1
+	}
+	return fmt.Sprintf("%d:%d:%d:%d", t.Galaxy, t.System, t.Planet, is_moon_int)
 }

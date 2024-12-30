@@ -4,8 +4,6 @@ from queue import Queue
 from network import Network, NetworkResponse
 from model.user import Account
 from model.task import Task, TaskType, MissionType
-from model.fleet import Fleet
-from model.target import Target
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +25,7 @@ class Galaxy(Network):
         Returns:
             NetworkResponse: Contains arguments and token if successful.
         """
-        PREPARE_FLEET_END_POINT = "game.php?page=my_fleet1"
+        PREPARE_FLEET_ENDPOINT = "game.php?page=my_fleet1"
         args = {}
         mission_mapping = {
             TaskType.ATTACK: MissionType.ATTACK,
@@ -53,7 +51,7 @@ class Galaxy(Network):
         args.update(fleet_data)
 
         logger.info(f"Preparing fleet for task: {task}")
-        response = self._post(PREPARE_FLEET_END_POINT, args)
+        response = self._post(PREPARE_FLEET_ENDPOINT, args)
 
         if response.status == 0:
             token = response.data.get('result', {}).get('token')
@@ -185,3 +183,14 @@ class Galaxy(Network):
         logger.info("Handling escape task...")
         # TODO: Implement escape task handling
         return NetworkResponse(status=0, data={'message': 'Escape task not implemented yet.'})
+
+    def query_planet_id(self, task: Task):
+        logger.info("Querying planet ID...")
+        if not self.planet_id_table:
+            self.change_planet()
+        target = task.start_planet
+        position = target.to_position()
+        planet_id = self.planet_id_table.get(position)
+        if not planet_id:
+            return NetworkResponse(status=-1, data={}, err_msg="Planet not found")
+        return NetworkResponse(status=0, data={'planet_id': planet_id})
