@@ -12,10 +12,12 @@ jobs:
     strategy:
       matrix:
         dockerfile:
-          - path: "master/Dockerfile"
+          - path: "Dockerfile"
             tag: "master-latest"
-          - path: "node/Dockerfile"
+            context: "master"
+          - path: "Dockerfile"
             tag: "node-latest"
+            context: "node"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,10 +28,11 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
-      - name: Build Docker image
-        run: |
-          docker build -t ${{ secrets.DOCKER_HUB_USERNAME }}/galaxy-web:${{ matrix.tag }} -f ${{ matrix.path }} .
-
-      - name: Push Docker image
-        run: |
-          docker push ${{ secrets.DOCKER_HUB_USERNAME }}/galaxy-web:${{ matrix.tag }}
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}  # 使用矩阵变量中的 context
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_HUB_USERNAME }}/galaxyweb:${{ matrix.tag }}
+          file: ${{ matrix.path }}
