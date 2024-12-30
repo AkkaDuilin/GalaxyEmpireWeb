@@ -25,8 +25,10 @@ WORKDIR /app
 # Copy the binary from the builder stage
 COPY --from=builder /app/main .
 
+COPY ./config/ /app/config/
+
 # Expose the port the application runs on (if needed)
-EXPOSE 8080
+EXPOSE 9333
 
 # Command to run the application
 CMD ["./main"]
