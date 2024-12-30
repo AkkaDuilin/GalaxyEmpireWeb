@@ -4,23 +4,38 @@ on:
   push:
     branches:
       - dev
-  workflow_dispatch: # 允许手动触发
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        dockerfile:
-          - path: "Dockerfile"
+        include:
+          - context: "master"
             tag: "master-latest"
-            context: "master"
-          - path: "Dockerfile"
+            dockerfile: "master/Dockerfile"
+            platform: "linux/amd64,linux/arm64"
+          - context: "node"
             tag: "node-latest"
-            context: "node"
+            dockerfile: "node/Dockerfile"
+            platform: "linux/amd64,linux/arm64"
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Debug matrix values
+        run: |
+          echo "Context: ${{ matrix.context }}"
+          echo "Tag: ${{ matrix.tag }}"
+          echo "Dockerfile: ${{ matrix.dockerfile }}"
+          echo "Platform: ${{ matrix.platform }}"
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -29,10 +44,10 @@ jobs:
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
-          context: ${{ matrix.context }}  # 使用矩阵变量中的 context
+          context: ./${{ matrix.context }}
           push: true
-          tags: |
-            ${{ secrets.DOCKER_HUB_USERNAME }}/galaxyweb:${{ matrix.tag }}
-          file: ${{ matrix.path }}
+          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/galaxyweb:${{ matrix.tag }}
+          file: ./${{ matrix.dockerfile }}
+          platforms: ${{ matrix.platform }}
