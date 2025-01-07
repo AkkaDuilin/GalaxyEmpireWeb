@@ -122,11 +122,13 @@ export default function UserAuthForm() {
         localStorage.setItem('token', result.token);
         localStorage.setItem('user', JSON.stringify(result.user));
         const userData = {
-          username: data.username,  // 使用表单中的用户名
-          email: result.data?.email || '',
-          image: result.data?.avatar || '',
-          role: result.data?.role || 'user',
-          id: result.data?.id || ''
+          id: result.user.id,
+          username: result.user.username,
+          // 如果这些字段后端没有返回，则使用默认值
+          email: '',  // 后端没有返回 email
+          image: '',  // 后端没有返回 image
+          role: 'user',  // 默认角色
+          balance: result.user.balance
         };
         setUser(userData);
         console.log('User data set:', userData);
