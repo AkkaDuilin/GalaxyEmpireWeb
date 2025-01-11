@@ -179,4 +179,4 @@ logs/
 *.log
 *.log.*
 *.yaml
-.vscode/settings.json
+.vscode/
