@@ -8,6 +8,7 @@ import (
 	"GalaxyEmpireWeb/services/casbinservice"
 	"GalaxyEmpireWeb/utils"
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -111,11 +112,11 @@ func (ts *taskService) GetTaskByID(ctx context.Context, taskID uint) (*models.Ta
 	log.Info("[TaskService] GetTaskByID", zap.String("traceID", traceID), zap.Uint("userID", userID), zap.Uint("taskID", taskID))
 	allowed, err := ts.Enforcer.Enforce(ctx, models.UserEntityPrefix+strconv.Itoa(int(userID)), task.GetEntityPrefix()+strconv.Itoa(int(taskID)), "read")
 	if err != nil {
-		log.Error("[TaskService] GetTaskByID", zap.String("traceID", traceID), zap.Uint("userID", userID), zap.Error(err))
+		log.Error("[TaskService] GetTaskByID Failed to Enforce", zap.String("traceID", traceID), zap.Uint("userID", userID), zap.Error(err))
 		return nil, utils.NewServiceError(http.StatusInternalServerError, "Casbin Enforce Error", err)
 	}
 	if !allowed {
-		log.Warn("[TaskService] GetTaskByID", zap.String("traceID", traceID), zap.Uint("userID", userID), zap.Uint("taskID", taskID))
+		log.Warn("[TaskService] GetTaskByID User Not Allowed", zap.String("traceID", traceID), zap.Uint("userID", userID), zap.Uint("taskID", taskID))
 		return nil, utils.NewServiceError(http.StatusForbidden, "Permission Denied", nil)
 	}
 
@@ -164,13 +165,26 @@ func (ts *taskService) UpdateTask(ctx context.Context, taskID uint, updates *mod
 			return utils.NewServiceError(http.StatusInternalServerError, "Update Task Error", err)
 		}
 	}
-
-	// 处理 Targets 更新
 	if updates.Targets != nil {
-		if err := tx.Model(&existingTask).Association("Targets").Replace(*updates.Targets); err != nil {
+		err2 := handleAssociationUpdate(ctx, tx, &existingTask, "Targets", updates.Targets)
+		if err2 != nil {
 			tx.Rollback()
-			log.Error("[TaskService] Update Targets Error", zap.Error(err))
-			return utils.NewServiceError(http.StatusInternalServerError, "Update Targets Error", err)
+			return err2
+		}
+	}
+	if updates.StartPlanet != nil {
+		err2 := handleAssociationUpdate(ctx, tx, &existingTask, "StartPlanet", updates.StartPlanet)
+		if err2 != nil {
+			tx.Rollback()
+			return err2
+		}
+	}
+
+	if updates.Fleet != nil {
+		err2 := handleAssociationUpdate(ctx, tx, &existingTask, "Fleet", updates.Fleet)
+		if err2 != nil {
+			tx.Rollback()
+			return err2
 		}
 	}
 
@@ -192,11 +206,11 @@ func (ts *taskService) DeleteTask(ctx context.Context, taskID uint) *utils.Servi
 	task.ID = taskID
 	allowed, err := ts.Enforcer.Enforce(ctx, models.UserEntityPrefix+strconv.Itoa(int(userID)), task.GetEntityPrefix()+strconv.Itoa(int(taskID)), "write")
 	if err != nil {
-		log.Error("[TaskService] DeleteTask", zap.String("traceID", traceID), zap.Uint("userID", userID), zap.Error(err))
+		log.Error("[TaskService] DeleteTask Failed to Enforce", zap.String("traceID", traceID), zap.Uint("userID", userID), zap.Error(err))
 		return utils.NewServiceError(http.StatusInternalServerError, "Casbin Enforce Error", err)
 	}
 	if !allowed {
-		log.Warn("[TaskService] DeleteTask", zap.String("traceID", traceID), zap.Uint("userID", userID), zap.Uint("taskID", taskID))
+		log.Warn("[TaskService] DeleteTask User Not allowed", zap.String("traceID", traceID), zap.Uint("userID", userID), zap.Uint("taskID", taskID))
 		return utils.NewServiceError(http.StatusForbidden, "Permission Denied", nil)
 	}
 	result := ts.DB.Delete(&task, taskID)
@@ -250,5 +264,17 @@ func (ts *taskService) UpdateTaskEnabled(ctx context.Context, taskID uint, enabl
 		zap.Uint("userID", userID),
 		zap.Uint("taskID", taskID),
 		zap.Bool("enabled", enabled))
+	return nil
+}
+
+func handleAssociationUpdate(ctx context.Context, tx *gorm.DB, existingTask *models.Task, associationName string, updates any) *utils.ServiceError {
+	if err := tx.Model(existingTask).Association(associationName).Replace(updates); err != nil {
+		tx.Rollback()
+		log.Error(fmt.Sprintf("[TaskService] Update %s Error", associationName),
+			zap.String("traceID", utils.TraceIDFromContext(ctx)),
+			zap.Uint("TaskID", existingTask.ID),
+			zap.Error(err))
+		return utils.NewServiceError(http.StatusInternalServerError, fmt.Sprintf("Update %s Error", associationName), err)
+	}
 	return nil
 }
